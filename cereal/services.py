@@ -102,8 +102,8 @@ _services: dict[str, tuple] = {
   "customReservedRawData0": (True, 0.),
   "customReservedRawData1": (True, 0.),
   "customReservedRawData2": (True, 0.),
-  "controlsStateExt": (False, 100.),
-  "carStateExt": (False, 100.),
+  "controlsStateExt": (True, 100.),
+  "carStateExt": (True, 100.),
   "modelExt": (True, 20.),
   "liveGPS": (True, 20.),
 }
