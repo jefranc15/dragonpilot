@@ -43,9 +43,9 @@ class CarInterface(CarInterfaceBase):
 
       ret.enableBsm = 0x1e5 in fingerprint[CAN.ECAN]
 
-      # Check if the car is hybrid. Only HEV/PHEV cars have 0xFA on E-CAN.
-      if 0xFA in fingerprint[CAN.ECAN]:
-        ret.flags |= HyundaiFlags.HYBRID.value
+      for fw in car_fw:
+        if fw.ecu == "fwdCamera" and (fw.fwVersion.startswith(b'\xf1\x00KA4HMFC')):
+          ret.flags |= HyundaiFlags.HYBRID.value
 
       if lka_steering:
         # detect LKA steering
@@ -53,9 +53,6 @@ class CarInterface(CarInterfaceBase):
         if 0x110 in fingerprint[CAN.CAM]:
           ret.flags |= HyundaiFlags.CANFD_LKA_STEERING_ALT.value
       else:
-        # no LKA steering
-        if 0x1cf not in fingerprint[CAN.ECAN]:
-          ret.flags |= HyundaiFlags.CANFD_ALT_BUTTONS.value
         if not ret.flags & HyundaiFlags.RADAR_SCC:
           ret.flags |= HyundaiFlags.CANFD_CAMERA_SCC.value
 
@@ -66,6 +63,10 @@ class CarInterface(CarInterfaceBase):
           ret.flags |= HyundaiFlags.CANFD_ALT_GEARS_2.value
         else:
           ret.flags |= HyundaiFlags.CANFD_ALT_GEARS.value
+
+      # Some HDA2 do not have 0x1cf
+      if 0x1cf not in fingerprint[CAN.ECAN]:
+        ret.flags |= HyundaiFlags.CANFD_ALT_BUTTONS.value
 
       cfgs = [get_safety_config(structs.CarParams.SafetyModel.hyundaiCanfd), ]
       if CAN.ECAN >= 4:
