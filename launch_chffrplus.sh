@@ -111,14 +111,6 @@ function two_init {
   # wifi scan
   wpa_cli IFNAME=wlan0 SCAN
 
-  # Check for NEOS update
-  if [ -f /LEECO ] && [ $(< /VERSION) != "$REQUIRED_NEOS_VERSION" ]; then
-    echo "Installing NEOS update"
-    NEOS_PY="$DIR/selfdrive/hardware/eon/neos.py"
-    MANIFEST="$DIR/selfdrive/hardware/eon/neos.json"
-    $NEOS_PY --swap-if-ready $MANIFEST
-    $DIR/selfdrive/hardware/eon/updater $NEOS_PY $MANIFEST
-  fi
 
   # One-time fix for a subset of OP3T with gyro orientation offsets.
   # Remove and regenerate qcom sensor registry. Only done on OP3T mainboards.
