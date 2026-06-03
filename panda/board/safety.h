@@ -16,7 +16,7 @@
 #include "safety/safety_volkswagen_pq.h"
 #include "safety/safety_elm327.h"
 #include "safety/safety_volvo.h"
-
+//#include "safety/safety_dnga.h"
 // from cereal.car.CarParams.SafetyModel
 #define SAFETY_SILENT 0U
 #define SAFETY_HONDA_NIDEC 1U
@@ -43,7 +43,7 @@
 #define SAFETY_STELLANTIS 25U
 #define SAFETY_VOLVO_C1 26U
 #define SAFETY_VOLVO_EUCD 27U
-
+//#define SAFETY_DNGA 32U
 uint16_t current_safety_mode = SAFETY_SILENT;
 int16_t current_safety_param = 0;
 const safety_hooks *current_hooks = &nooutput_hooks;
@@ -242,7 +242,7 @@ typedef struct {
 const safety_hook_config safety_hook_registry[] = {
   {SAFETY_SILENT, &nooutput_hooks},
   {SAFETY_HONDA_NIDEC, &honda_nidec_hooks},
-  {SAFETY_TOYOTA, &toyota_hooks},
+  {SAFETY_TOYOTA, &dnga_hooks},
   {SAFETY_ELM327, &elm327_hooks},
   {SAFETY_GM, &gm_hooks},
   {SAFETY_HONDA_BOSCH, &honda_bosch_hooks},
@@ -254,6 +254,7 @@ const safety_hook_config safety_hook_registry[] = {
   {SAFETY_NOOUTPUT, &nooutput_hooks},
   {SAFETY_HYUNDAI_LEGACY, &hyundai_legacy_hooks},
   {SAFETY_MAZDA, &mazda_hooks},
+//  {SAFETY_DNGA, &dnga_hooks},
 #ifdef ALLOW_DEBUG
   {SAFETY_TESLA, &tesla_hooks},
   {SAFETY_SUBARU_LEGACY, &subaru_legacy_hooks},
