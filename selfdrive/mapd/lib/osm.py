@@ -13,7 +13,8 @@ def create_way(way_id, node_ids, from_way):
 
 class OSM():
   def __init__(self):
-    self.api = overpy.Overpass()
+    #self.api = overpy.Overpass()
+    self.api = overpy.Overpass(url='https://lz4.overpass-api.de/api/interpreter')
     # self.api = overpy.Overpass(url='https://z.overpass-api.de/api/interpreter')
 
   def fetch_road_ways_around_location(self, lat, lon, radius):

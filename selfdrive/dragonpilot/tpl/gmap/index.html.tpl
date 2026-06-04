@@ -3,7 +3,6 @@
   <head>
     <meta charset="utf-8">
     <title>dragonpilot</title>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
     <link rel="stylesheet" type="text/css" href="./style.css" />
     <!-- UIkit CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uikit@3.9.2/dist/css/uikit.min.css" />

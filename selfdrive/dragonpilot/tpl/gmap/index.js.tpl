@@ -5,12 +5,17 @@
 // parameter when you first load the API. For example:
 // <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places">
 function initAutocomplete() {
+  // Wrap the template tags in quotes and provide a fallback if they are empty
+  const backendLat = parseFloat("{{lat}}") || 14.5995;
+  const backendLon = parseFloat("{{lon}}") || 120.9842;
+
   const map = new google.maps.Map(document.getElementById("map"), {
-    center: { lat: {{lat}}, lng: {{lon}} },
+    center: { lat: backendLat, lng: backendLon },
     zoom: 13,
     mapTypeId: "roadmap",
     disableDefaultUI: true
   });
+
   // Create the search box and link it to the UI element.
   const input = document.getElementById("pac-input");
   const searchBox = new google.maps.places.SearchBox(input);
