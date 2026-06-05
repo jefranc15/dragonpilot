@@ -54,8 +54,8 @@ class CarControllerParams():
       self.STEER_DELTA_UP = 20
       self.STEER_DELTA_DOWN = 30
     else:
-      self.STEER_DELTA_UP = 17
-      self.STEER_DELTA_DOWN = 30
+      self.STEER_DELTA_UP = 22
+      self.STEER_DELTA_DOWN = 35
 
 
 class CarController():
