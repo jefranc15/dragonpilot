@@ -1,225 +1,222 @@
-from selfdrive.car import make_can_msg
-from selfdrive.car.dnga.dngacan import create_can_steer_command, \
-                                       dnga_create_accel_command, \
-                                       dnga_create_brake_command, \
-                                       dnga_create_hud
-from selfdrive.car.dnga.values import DBC, NOT_CAN_CONTROLLED
-from opendbc.can.packer import CANPacker
-from common.numpy_fast import clip, interp
-from selfdrive.config import Conversions as CV
+from selfdrive.car import make_can_msg  # Helper for creating raw CAN messages
+from selfdrive.car.dnga.dngacan import create_can_steer_command, \  # LKAS steering CAN command
+                                       dnga_create_accel_command, \  # ACC_CMD_HUD / acceleration command
+                                       dnga_create_brake_command, \  # ACC_BRAKE / braking command
+                                       dnga_create_hud  # LKAS_HUD / cluster HUD command
+from selfdrive.car.dnga.values import DBC, NOT_CAN_CONTROLLED  # Car DBC map and steering-control car set
+from opendbc.can.packer import CANPacker  # Packs signal dictionaries into CAN frames
+from common.numpy_fast import clip, interp  # Fast clamp and interpolation helpers
+from selfdrive.config import Conversions as CV  # Unit conversions such as KPH_TO_MS
 
-try:
-  from common.features import Features
-except ImportError:
-  class Features:
-    def has(self, feature_name):
-      return False
+try:  # Try to import dragonpilot custom feature flags
+  from common.features import Features  # Feature flag helper
+except ImportError:  # If the feature module does not exist
+  class Features:  # Create a safe fallback class
+    def has(self, feature_name):  # Fallback feature lookup
+      return False  # Default all optional features to disabled
 
 
-def apply_dnga_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, blinkerOn, LIMITS):
-  reduced_torque_mult = 10 if blinkerOn else 1.5
+def apply_dnga_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, blinkerOn, LIMITS):  # Limit steering torque command safely
+  reduced_torque_mult = 10 if blinkerOn else 1.5  # Allow more driver/blinker override when signal is on
 
-  driver_max_torque = 255 + driver_torque * reduced_torque_mult
-  driver_min_torque = -255 - driver_torque * reduced_torque_mult
+  driver_max_torque = 255 + driver_torque * reduced_torque_mult  # Upper steering limit based on driver torque
+  driver_min_torque = -255 - driver_torque * reduced_torque_mult  # Lower steering limit based on driver torque
 
-  max_steer_allowed = clip(driver_max_torque, 0, 255)
-  min_steer_allowed = clip(driver_min_torque, -255, 0)
+  max_steer_allowed = clip(driver_max_torque, 0, 255)  # Clamp max torque to allowed positive range
+  min_steer_allowed = clip(driver_min_torque, -255, 0)  # Clamp min torque to allowed negative range
 
-  apply_torque = clip(apply_torque, min_steer_allowed, max_steer_allowed)
+  apply_torque = clip(apply_torque, min_steer_allowed, max_steer_allowed)  # Apply driver torque limit
 
-  if apply_torque_last > 0:
-    apply_torque = clip(
-      apply_torque,
-      max(apply_torque_last - LIMITS.STEER_DELTA_DOWN, -LIMITS.STEER_DELTA_UP),
-      apply_torque_last + LIMITS.STEER_DELTA_UP
+  if apply_torque_last > 0:  # If last command was positive
+    apply_torque = clip(  # Apply rate limit while steering positive
+      apply_torque,  # Requested torque
+      max(apply_torque_last - LIMITS.STEER_DELTA_DOWN, -LIMITS.STEER_DELTA_UP),  # Lower bound
+      apply_torque_last + LIMITS.STEER_DELTA_UP  # Upper bound
     )
-  else:
-    apply_torque = clip(
-      apply_torque,
-      apply_torque_last - LIMITS.STEER_DELTA_UP,
-      min(apply_torque_last + LIMITS.STEER_DELTA_DOWN, LIMITS.STEER_DELTA_UP)
+  else:  # If last command was zero or negative
+    apply_torque = clip(  # Apply rate limit while steering negative
+      apply_torque,  # Requested torque
+      apply_torque_last - LIMITS.STEER_DELTA_UP,  # Lower bound
+      min(apply_torque_last + LIMITS.STEER_DELTA_DOWN, LIMITS.STEER_DELTA_UP)  # Upper bound
     )
 
-  return int(round(float(apply_torque)))
+  return int(round(float(apply_torque)))  # Return integer torque command
 
 
-class CarControllerParams():
-  def __init__(self, CP):
-    self.STEER_BP = CP.lateralParams.torqueBP
-    self.STEER_LIM_TORQ = CP.lateralParams.torqueV
+class CarControllerParams():  # Container for controller tuning constants
+  def __init__(self, CP):  # Initialize using CarParams
+    self.STEER_BP = CP.lateralParams.torqueBP  # Speed breakpoints for steering torque limit
+    self.STEER_LIM_TORQ = CP.lateralParams.torqueV  # Steering torque values for each breakpoint
 
-    if CP.carFingerprint in NOT_CAN_CONTROLLED:
-      self.STEER_DELTA_UP = 20
-      self.STEER_DELTA_DOWN = 30
-    else:
-      self.STEER_DELTA_UP = 17
-      self.STEER_DELTA_DOWN = 30
+    if CP.carFingerprint in NOT_CAN_CONTROLLED:  # If this car is not CAN controlled
+      self.STEER_DELTA_UP = 20  # Faster torque increase for non-CAN-controlled case
+      self.STEER_DELTA_DOWN = 30  # Torque decrease limit
+    else:  # Normal DNGA CAN steering case
+      self.STEER_DELTA_UP = 17  # Torque increase limit
+      self.STEER_DELTA_DOWN = 30  # Torque decrease limit
 
 
-class CarController():
-  def __init__(self, dbc_name, CP, VM):
-    self.last_steer = 0
-    self.steer_rate_limited = False
+class CarController():  # Main car controller class
+  def __init__(self, dbc_name, CP, VM):  # Initialize controller
+    self.last_steer = 0  # Store last applied steering torque
+    self.steer_rate_limited = False  # Track whether steering was rate limited
 
-    self.params = CarControllerParams(CP)
-    self.packer = CANPacker(DBC[CP.carFingerprint]['pt'])
+    self.params = CarControllerParams(CP)  # Load controller parameters
+    self.packer = CANPacker(DBC[CP.carFingerprint]['pt'])  # Create CAN packer using powertrain DBC
 
-    f = Features()
-    self.need_clear_engine = f.has("ClearCode")
+    f = Features()  # Create feature flag helper
+    self.need_clear_engine = f.has("ClearCode")  # Optional diagnostic clear-code feature
 
-    self.stockLdw = False
+    self.stockLdw = False  # Stock lane-departure warning flag placeholder
 
-    # Prevent instant braking right after SET / engage
-    self.prev_enabled = False
-    self.block_brake_until_frame = 0
+    self.prev_enabled = False  # Previous openpilot enabled state
+    self.block_brake_until_frame = 0  # Frame until which braking is blocked after engagement
 
   def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
              hud_alert, left_line, right_line, lead,
-             left_lane_depart, right_lane_depart, dragonconf):
+             left_lane_depart, right_lane_depart, dragonconf):  # Main update loop called by interface
 
-    can_sends = []
+    can_sends = []  # List of CAN messages to send this frame
 
     # -----------------------------
     # Steering
     # -----------------------------
-    steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)
-    steer_max_interp = max(1.0, steer_max_interp)
+    steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)  # Get speed-based steering max
+    steer_max_interp = max(1.0, steer_max_interp)  # Prevent divide-by-zero later
 
-    new_steer = int(round(actuators.steer * steer_max_interp))
+    new_steer = int(round(actuators.steer * steer_max_interp))  # Convert normalized steer command to raw torque
 
-    isBlinkerOn = CS.out.leftBlinker != CS.out.rightBlinker
+    isBlinkerOn = CS.out.leftBlinker != CS.out.rightBlinker  # True if exactly one blinker is active
 
-    apply_steer = apply_dnga_steer_torque_limits(
-      new_steer,
-      self.last_steer,
-      CS.out.steeringTorqueEps,
-      isBlinkerOn,
-      self.params
+    apply_steer = apply_dnga_steer_torque_limits(  # Apply steering torque safety limits
+      new_steer,  # Requested steering torque
+      self.last_steer,  # Previous steering torque
+      CS.out.steeringTorqueEps,  # Driver/EPS torque reading
+      isBlinkerOn,  # Blinker state
+      self.params  # Steering limit parameters
     )
 
-    self.steer_rate_limited = (new_steer != apply_steer) and (apply_steer != 0)
-    self.steer_rate_limited &= not CS.out.steeringPressed
+    self.steer_rate_limited = (new_steer != apply_steer) and (apply_steer != 0)  # Mark steering as limited if changed
+    self.steer_rate_limited &= not CS.out.steeringPressed  # Do not alert rate limit if driver is steering
 
     # -----------------------------
     # Longitudinal base values
     # -----------------------------
-    apply_accel = clip(actuators.accel, -3.0, 1.5)
-    apply_brake = -apply_accel if apply_accel < 0.0 else 0.0
+    apply_accel = clip(actuators.accel, -3.0, 1.5)  # Clamp OP requested accel/decel
+    apply_brake = -apply_accel if apply_accel < 0.0 else 0.0  # Convert negative accel into positive brake request
 
-    # Block braking briefly after engagement
-    if enabled and not self.prev_enabled:
-      self.block_brake_until_frame = frame + 200  # about 2 sec at 100 Hz
+    if enabled and not self.prev_enabled:  # If OP just became enabled
+      self.block_brake_until_frame = frame + 200  # Block brake state for about 2 seconds after SET/engage
 
-    self.prev_enabled = enabled
+    self.prev_enabled = enabled  # Save enabled state for next loop
 
-    # Clear Engine Codes
-    if self.need_clear_engine or frame < 1000:
-      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))
+    if self.need_clear_engine or frame < 1000:  # If clear-code feature is on or device just booted
+      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))  # Send diagnostic clear frame
 
+    # -----------------------------
     # Steering command, 50 Hz
-    if (frame % 2) == 0:
-      steer_req = (enabled or self.stockLdw) and CS.lkas_latch
-      can_sends.append(
-        create_can_steer_command(
-          self.packer,
-          apply_steer,
-          steer_req,
-          (frame // 2) % 16
+    # -----------------------------
+    if (frame % 2) == 0:  # Send steering every 2 frames
+      steer_req = (enabled or self.stockLdw) and CS.lkas_latch  # Request steering only when enabled/LDA and LKAS latch is on
+      can_sends.append(  # Add steering CAN message
+        create_can_steer_command(  # Build STEERING_LKAS frame
+          self.packer,  # CAN packer
+          apply_steer,  # Raw torque command
+          steer_req,  # Steering request bit
+          (frame // 2) % 16  # 4-bit counter
         )
       )
 
+    # -----------------------------
     # Longitudinal / HUD, 20 Hz
-    if (frame % 5) == 0:
+    # -----------------------------
+    if (frame % 5) == 0:  # Send longitudinal and HUD messages every 5 frames
+
+      boost = interp(CS.out.vEgo, [0.2, 0.5, 18.0, 23.0], [0.0, 1.0, 1.0, 1.0])  # Reduce accel command at very low speed
+      base_speed = getattr(actuators, 'speed', CS.out.vEgo)  # Use actuator target speed if available, otherwise current speed
+      des_speed = max(0.0, base_speed + clip(actuators.accel * boost, -1.0, 1.0))  # Desired ACC command speed
 
       # -----------------------------
-      # Desired speed for ACC_CMD_HUD
+      # ACC_BRAKE / 0x271 state map from your logs
       # -----------------------------
-      boost = interp(CS.out.vEgo, [0.2, 0.5, 18.0, 23.0], [0.0, 1.0, 1.0, 1.0])
-      base_speed = getattr(actuators, 'speed', CS.out.vEgo)
-      des_speed = base_speed + min((actuators.accel * boost), 1.0)
+      # 0x00 + pump 0.0 + mag 200 = disabled / neutral / no brake
+      # 0x01 + pump 0.0 + mag 200 = enabled / ready / no brake
+      # 0x21 + pump -0.4 + mag 0x04xx = active braking request
+      # Do not use 0x30 or 0x31 yet; those are likely stop-hold states.
 
-      # -----------------------------
-      # ACC_BRAKE / 0x271
-      # -----------------------------
-      # Stock neutral from your logs:
-      # 00 00 00 00 00 C8 ...
-      brake_state = 0x00
-      pump_reaction = 0.0
-      brake_mag = 200
+      if not enabled:  # If OP is not enabled
+        brake_state = 0x00  # Send neutral disabled brake state
+        pump_reaction = 0.0  # No pump reaction
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
 
-      # Highway-only braking for now.
-      # Do NOT use OP braking below 30 kph yet.
-      highway_brake_allowed = (
-        enabled and
-        frame > self.block_brake_until_frame and
-        CS.out.vEgo > 30.0 * CV.KPH_TO_MS and
-        apply_brake > 0.25 and
-        not CS.out.gasPressed and
-        not CS.out.brakePressed
+      else:  # If OP is enabled
+        brake_state = 0x01  # Send enabled/no-brake state found in logs
+        pump_reaction = 0.0  # No pump reaction while not braking
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
+
+      decel_req = (  # Decide if OP is truly requesting moving braking
+        enabled and  # OP must be enabled
+        frame > self.block_brake_until_frame and  # Do not brake immediately after SET
+        CS.out.vEgo > 20.0 * CV.KPH_TO_MS and  # Do not use OP brake below 20 kph yet
+        apply_brake > 0.20 and  # Require meaningful decel request
+        apply_brake < 0.70 and  # Ignore strong decel request for first safety test
+        not CS.out.gasPressed and  # Do not brake if driver is pressing gas
+        not CS.out.brakePressed  # Do not send OP brake if driver is pressing brake
       )
 
-      if highway_brake_allowed:
-        # Stock active braking family from logs:
-        # 00 21 00 FC 04 xx ...
-        brake_state = 0x21
-        pump_reaction = -0.4
-
-        # Conservative first map.
-        # Lower value seems stronger based on your stock logs.
-        brake_mag = int(interp(
-          clip(apply_brake, 0.25, 1.20),
-          [0.25, 1.20],
-          [1219, 1180]
+      if decel_req:  # If OP actually wants mild moving decel
+        brake_state = 0x21  # Active brake request state from stock logs
+        pump_reaction = -0.4  # Pump value seen in stock 0x21 frames
+        brake_mag = int(interp(  # Map OP brake request to conservative stock-like magnitude
+          clip(apply_brake, 0.20, 0.70),  # Clamp brake request into test range
+          [0.20, 0.70],  # OP brake request range
+          [1215, 1205]  # Very narrow weak-braking test range near stock 0x04xx values
         ))
 
-      # Only tell ACC_CMD_HUD that we are decelerating when we actually send 0x21
-      brake_amt_for_hud = apply_brake if highway_brake_allowed else 0.0
+      brake_amt_for_hud = apply_brake if decel_req else 0.0  # Tell ACC_CMD_HUD decel only when sending 0x21
 
-      # ACC_CMD_HUD / 0x273
-      can_sends.append(
-        dnga_create_accel_command(
-          self.packer,
-          CS.cruise_speed,
-          CS.out.cruiseState.available,
-          enabled,
-          lead,
-          des_speed,
-          brake_amt_for_hud,
-          CS.op_distance_val
+      can_sends.append(  # Add ACC_CMD_HUD message
+        dnga_create_accel_command(  # Build 0x273 ACC command frame
+          self.packer,  # CAN packer
+          CS.cruise_speed,  # OP cruise set speed
+          CS.out.cruiseState.available,  # ACC ready/available bit used by HUD command
+          enabled,  # OP enabled state
+          lead,  # Lead visible flag
+          des_speed,  # Desired speed command
+          brake_amt_for_hud,  # Brake amount for IS_DECEL/IS_ACCEL selection
+          CS.op_distance_val  # Follow distance value
         )
       )
 
-      # ACC_BRAKE / 0x271
-      can_sends.append(
-        dnga_create_brake_command(
-          self.packer,
-          brake_state,
-          pump_reaction,
-          brake_mag,
-          (frame // 5) % 8
+      can_sends.append(  # Add ACC_BRAKE message
+        dnga_create_brake_command(  # Build 0x271 brake command
+          self.packer,  # CAN packer
+          brake_state,  # 0x00, 0x01, or 0x21
+          pump_reaction,  # 0.0 or -0.4
+          brake_mag,  # 200 or conservative 0x04xx value
+          (frame // 5) % 8  # 3-bit counter
         )
       )
 
-      # LKAS_HUD / 0x274
-      can_sends.append(
-        dnga_create_hud(
-          self.packer,
-          CS.out.cruiseState.available and CS.lkas_latch,
-          enabled,
-          left_line,
-          right_line,
-          self.stockLdw,
-          CS.stock_fcw,
-          CS.stock_aeb,
-          CS.stock_adas_frontDepartureHUD,
-          CS.stock_lkc_off,
-          CS.stock_fcw_off
+      can_sends.append(  # Add LKAS_HUD message
+        dnga_create_hud(  # Build 0x274 HUD command
+          self.packer,  # CAN packer
+          CS.out.cruiseState.available and CS.lkas_latch,  # LKAS ready
+          enabled,  # LKAS engaged visual state
+          left_line,  # Left lane visible
+          right_line,  # Right lane visible
+          self.stockLdw,  # Lane departure warning
+          CS.stock_fcw,  # Stock forward collision warning
+          CS.stock_aeb,  # Stock AEB state
+          CS.stock_adas_frontDepartureHUD,  # Front departure HUD state
+          CS.stock_lkc_off,  # LKC off state
+          CS.stock_fcw_off  # FCW off state
         )
       )
 
-    self.last_steer = apply_steer
+    self.last_steer = apply_steer  # Save steering command for next frame
 
-    new_actuators = actuators.copy()
-    new_actuators.steer = apply_steer / steer_max_interp
+    new_actuators = actuators.copy()  # Copy actuator object for return
+    new_actuators.steer = apply_steer / steer_max_interp  # Report applied normalized steer value
 
-    return new_actuators, can_sends
+    return new_actuators, can_sends  # Return applied actuators and CAN messages
