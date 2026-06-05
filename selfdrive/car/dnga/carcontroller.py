@@ -156,23 +156,26 @@ class CarController():
         pump_reaction = 0.0  # No pump reaction while not braking
         brake_mag = 200  # Stock neutral magnitude 0x00C8
 
-      decel_req = (  # Decide whether to request active moving braking
-        enabled and  # OP must be enabled
-        frame > self.block_brake_until_frame and  # Avoid braking immediately after engagement
-        CS.out.vEgo > 20.0 * CV.KPH_TO_MS and  # Do not use OP brake below 20 kph yet
-        apply_brake > 0.20 and  # Require meaningful OP decel request
-        apply_brake < 0.70 and  # Ignore stronger requests during this first test
-        not CS.out.gasPressed and  # Do not brake if driver is pressing gas
-        not CS.out.brakePressed  # Do not command OP brake if driver is pressing brake
+      decel_req = (
+        enabled and
+        frame > self.block_brake_until_frame and
+        CS.out.vEgo > 1.0 * CV.KPH_TO_MS and      # allow almost all speeds, but not true standstill
+        apply_brake > 0.10 and                    # very small brake request threshold
+        apply_brake < 0.35 and                    # reject stronger OP braking for now
+        not CS.out.gasPressed and
+        not CS.out.brakePressed
       )
 
-      if decel_req:  # OP is actually asking for mild moving decel
-        brake_state = 0x21  # Active brake request state found in stock logs
-        pump_reaction = -0.4  # Pump value seen in stock 0x21 frames
-        brake_mag = int(interp(  # Convert OP decel request to a conservative 0x04xx magnitude
-          clip(apply_brake, 0.20, 0.70),  # Clamp brake request into test range
-          [0.20, 0.70],  # OP brake amount range
-          [1215, 1205]  # Narrow weak-braking test range near stock values
+      if decel_req:
+        brake_state = 0x21
+        pump_reaction = -0.4
+
+        # Very soft all-speed test map.
+        # Keep this narrow first because 0x21 itself can brake strongly.
+        brake_mag = int(interp(
+          clip(apply_brake, 0.10, 0.35),
+          [0.10, 0.35],
+          [1215, 1212]
         ))
 
       brake_amt_for_hud = apply_brake if decel_req else 0.0  # Tell ACC_CMD_HUD decel only when ACC_BRAKE is active
