@@ -23,24 +23,9 @@ def run(cmd, timeout=3):
   except Exception as e:
     return str(e)
 
-def app_running():
-  out = run(["/system/bin/ps", "-A"], timeout=5)
-  return PKG in out
-
 def gps_requested():
-  out = run(["/system/bin/dumpsys", "location"], timeout=5)
+  out = run(["/system/bin/dumpsys", "location"], timeout=3)
   return "UpdateRecord[gps com.chartcross.gpstest" in out
-
-
-def lock_rotation():
-  run([
-    "/system/bin/sh",
-    "-c",
-    "settings put system accelerometer_rotation 0; "
-    "settings put system user_rotation 1; "
-    "settings put secure accelerometer_rotation 0; "
-    "settings put secure user_rotation 1"
-  ], timeout=1)
 
 def launch_gpstest():
   print("gpswaked: launching GPS Test", flush=True)
@@ -48,37 +33,26 @@ def launch_gpstest():
     "/system/bin/sh",
     "-c",
     "/system/bin/monkey -p com.chartcross.gpstest -c android.intent.category.LAUNCHER 1"
-  ], timeout=15), flush=True)
+  ], timeout=3), flush=True)
 
-  # Let GPS Test start requesting GPS, then return to dragonpilot/Home.
+  # Let GPS Test start its GPS request, then hide it.
   time.sleep(1)
-  print("gpswaked: pressing Home", flush=True)
+  print("gpswaked: pressing Back", flush=True)
   print(run([
     "/system/bin/sh",
     "-c",
     "/system/bin/input keyevent 4"
   ], timeout=3), flush=True)
 
-  # Let GPS Test start its GPS request, then return to dragonpilot UI/Home.
-  time.sleep(1)
-  run([
-    "/system/bin/sh",
-    "-c",
-    "/system/bin/input keyevent 4"
-  ], timeout=5)
-
 def main():
-  lock_rotation()
-  lock_rotation()
-  time.sleep(2)
+  time.sleep(20)
 
   while True:
-    lock_rotation()
-    if not app_running() or not gps_requested():
+    if not gps_requested():
       launch_gpstest()
-      time.sleep(1)
 
-    time.sleep(120)
+    # Do not relaunch periodically if GPS is already active.
+    time.sleep(300)
 
 if __name__ == "__main__":
   main()
