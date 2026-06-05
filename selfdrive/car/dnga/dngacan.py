@@ -47,7 +47,7 @@ def dnga_create_brake_command(packer, brake_state, apply_brake_raw, idx):
     "BRAKE_STATE": brake_state,
     "MAGNITUDE": apply_brake_raw,
     "UNKNOWN_BYTE_2": 0,
-    "PUMP_REACTION2": 0,
+    "PUMP_REACTION2": -0.4,
   }
 
   dat = packer.make_can_msg("ACC_BRAKE", 0, values)[2]
