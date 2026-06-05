@@ -41,18 +41,19 @@ def dnga_aeb_warning(packer):
   values["CHECKSUM"] = checksum
   return packer.make_can_msg("ADAS_HUD", 0, values)
 
-def dnga_create_brake_command(packer, brake_state, apply_brake_raw, idx):
+def dnga_create_brake_command(packer, brake_state, pump_reaction, brake_mag, idx):
   values = {
     "COUNTER": idx,
     "BRAKE_STATE": brake_state,
-    "MAGNITUDE": apply_brake_raw,
-    "UNKNOWN_BYTE_2": 0,
-    "PUMP_REACTION2": -0.4,
+    "UNKNOWN_BYTE_2": 0x00,
+    "PUMP_REACTION2": pump_reaction,
+    "MAGNITUDE": brake_mag,
   }
 
   dat = packer.make_can_msg("ACC_BRAKE", 0, values)[2]
-  crc = (dnga_checksum(0x271, dat[:-1]))
+  crc = dnga_checksum(0x271, dat[:-1])
   values["CHECKSUM"] = crc
+
   return packer.make_can_msg("ACC_BRAKE", 0, values)
 
 def dnga_create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead, des_speed, brake_amt, set_distance):
