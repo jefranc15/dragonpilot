@@ -120,7 +120,7 @@ class CarController():
               apply_brake_raw = 0
         
           else:
-              brake_state = 0x00   # Coasting / No brake requested
+              brake_state = 0x21   # Coasting / No brake requested
               apply_brake_raw = 0
 
       self.last_standstill = standstill_req
