@@ -61,6 +61,8 @@ class CarController():
     self.need_clear_engine = f.has("ClearCode")
     self.stockLdw = False
     self.last_standstill = False  # Track standstill transitions
+    self.prev_enabled = False
+    self.block_brake_until_frame = 0
 
   def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd, hud_alert, left_line, right_line, lead, left_lane_depart, right_lane_depart, dragonconf):
     
@@ -76,8 +78,16 @@ class CarController():
     self.steer_rate_limited &= not CS.out.steeringPressed
 
     # 2. LONGITUDINAL LIMITS (Direct m/s^2 scaling)
+    # Direct OP accel/decel command
     apply_accel = clip(actuators.accel, -3.0, 1.5)
-    apply_brake = abs(apply_accel) if apply_accel < 0 else 0.0
+    apply_brake = -apply_accel if apply_accel < 0.0 else 0.0
+
+    # Block brake commands briefly after pressing SET/engaging.
+    # This prevents instant brake command at engagement.
+    if enabled and not self.prev_enabled:
+      self.block_brake_until_frame = frame + 200  # about 2 seconds at 100Hz
+
+    self.prev_enabled = enabled
 
     # Clear Engine Codes
     if self.need_clear_engine or frame < 1000:
@@ -95,38 +105,69 @@ class CarController():
       base_speed = getattr(actuators, 'speed', CS.out.vEgo)
       des_speed = base_speed + min((actuators.accel * boost), 1.0)
       
-      can_sends.append(dnga_create_accel_command(self.packer, CS.cruise_speed, CS.out.cruiseState.available, enabled, lead, des_speed, apply_brake, CS.op_distance_val))
+      #can_sends.append(dnga_create_accel_command(self.packer, CS.cruise_speed, CS.out.cruiseState.available, enabled, lead, des_speed, apply_brake, CS.op_distance_val))
+      brake_amt_for_hud = apply_brake if highway_brake_allowed else 0.0
 
-      # FIX: Integrated Brake/Hold State Machine to match dnga_hev.dbc updates
-      # FIX: Integrated Brake/Hold State Machine to match dnga_hev.dbc updates
-      standstill_req = enabled and CS.out.standstill and (apply_accel <= 0.0)
+      can_sends.append(
+        dnga_create_accel_command(
+          self.packer,
+          CS.cruise_speed,
+          CS.out.cruiseState.available,
+          enabled,
+          lead,
+          des_speed,
+          brake_amt_for_hud,
+          CS.op_distance_val
+        )
+      )
 
-      if not enabled:
-          brake_state = 0x00
-          apply_brake_raw = 0
-      elif standstill_req:
-          brake_state = 0x00   # Factory Standstill Hold state
-          apply_brake_raw = 0 # Full holding pressure to prevent creep
-      elif self.last_standstill and not standstill_req:
-          brake_state = 0x00   # Transition/Release state
-          apply_brake_raw = 0
-      else:
-          if apply_brake > 0.01:
-              brake_state = 0x00   # Actively braking
-        
-        # --- ADJUST BRAKING FORCE HERE ---
-        # 200 = The multiplier (Lower = softer braking, Higher = stronger braking)
-        # 800 = The maximum cap (Prevents openpilot from slamming the brakes too hard)
-              apply_brake_raw = 0
-        
-          else:
-              brake_state = 0x00   # Coasting / No brake requested
-              apply_brake_raw = 0
+      # -----------------------------
+      # ACC_BRAKE / 0x271 logic
+      # -----------------------------
 
-      self.last_standstill = standstill_req
+      # Stock neutral from your logs:
+      # 00 00 00 00 00 C8 ...
+      brake_state = 0x00
+      pump_reaction = 0.0
+      brake_mag = 200
+
+      # Highway-only braking for now.
+      # Do NOT use OP braking below 30 kph yet.
+      highway_brake_allowed = (
+        enabled and
+        frame > self.block_brake_until_frame and
+        CS.out.vEgo > 30.0 * CV.KPH_TO_MS and
+        apply_brake > 0.25 and
+        not CS.out.gasPressed and
+        not CS.out.brakePressed
+      )
       
-      # Clean delivery to dngacan without breaking on removed boolean flags
-      can_sends.append(dnga_create_brake_command(self.packer, brake_state, apply_brake_raw, (frame//5) % 8))
+      if highway_brake_allowed:
+        # Stock active braking family from your logs:
+        # 00 21 00 FC 04 xx ...
+        brake_state = 0x21
+        pump_reaction = -0.4
+      
+        # Conservative first mapping.
+        # Stock active braking was around 0x04xx.
+        # Start near the mild end only.
+        brake_mag = int(interp(
+          clip(apply_brake, 0.25, 1.20),
+          [0.25, 1.20],
+          [1219, 1180]
+        ))
+      
+      # Send ACC_BRAKE
+      can_sends.append(
+        dnga_create_brake_command(
+          self.packer,
+          brake_state,
+          pump_reaction,
+          brake_mag,
+          (frame // 5) % 8
+        )
+      )
+
 
       # HUD
       can_sends.append(dnga_create_hud(self.packer, CS.out.cruiseState.available and CS.lkas_latch, enabled, left_line, right_line, self.stockLdw, CS.stock_fcw, CS.stock_aeb, CS.stock_adas_frontDepartureHUD, CS.stock_lkc_off, CS.stock_fcw_off))
