@@ -105,14 +105,14 @@ class CarController():
           brake_state = 0x00
           apply_brake_raw = 0
       elif standstill_req:
-          brake_state = 0x21   # Factory Standstill Hold state
+          brake_state = 0x00   # Factory Standstill Hold state
           apply_brake_raw = 0 # Full holding pressure to prevent creep
       elif self.last_standstill and not standstill_req:
-          brake_state = 0x21   # Transition/Release state
+          brake_state = 0x00   # Transition/Release state
           apply_brake_raw = 0
       else:
           if apply_brake > 0.01:
-              brake_state = 0x21   # Actively braking
+              brake_state = 0x00   # Actively braking
         
         # --- ADJUST BRAKING FORCE HERE ---
         # 200 = The multiplier (Lower = softer braking, Higher = stronger braking)
@@ -120,7 +120,7 @@ class CarController():
               apply_brake_raw = 0
         
           else:
-              brake_state = 0x21   # Coasting / No brake requested
+              brake_state = 0x00   # Coasting / No brake requested
               apply_brake_raw = 0
 
       self.last_standstill = standstill_req
