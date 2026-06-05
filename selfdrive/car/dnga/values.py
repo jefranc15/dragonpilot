@@ -38,7 +38,7 @@ DBC = {
   CAR.YARISCROSSHEV: dbc_dict('dnga_hev', None),
 }
 
-BRAKE_SCALE = defaultdict(lambda: 1, {CAR.YARISCROSSHEV: 3.3})
+BRAKE_SCALE = defaultdict(lambda: 1, {CAR.YARISCROSSHEV: 2.0})
 GAS_SCALE = defaultdict(lambda: 2600, {CAR.YARISCROSSHEV: 0.4})
 
 NOT_CAN_CONTROLLED = set([])
