@@ -98,20 +98,30 @@ class CarController():
       can_sends.append(dnga_create_accel_command(self.packer, CS.cruise_speed, CS.out.cruiseState.available, enabled, lead, des_speed, apply_brake, CS.op_distance_val))
 
       # FIX: Integrated Brake/Hold State Machine to match dnga_hev.dbc updates
+      # FIX: Integrated Brake/Hold State Machine to match dnga_hev.dbc updates
       standstill_req = enabled and CS.out.standstill and (apply_accel <= 0.0)
-      
+
       if not enabled:
-        brake_state = 0x00
-        apply_brake_raw = 0
+          brake_state = 0x00
+          apply_brake_raw = 0
       elif standstill_req:
-        brake_state = 0x30        # Factory Standstill Hold state
-        apply_brake_raw = 1219    # Full 16-bit holding pressure to prevent creeping
+          brake_state = 0x30   # Factory Standstill Hold state
+          apply_brake_raw = 1219 # Full holding pressure to prevent creep
       elif self.last_standstill and not standstill_req:
-        brake_state = 0x31        # Transition/Release state
-        apply_brake_raw = 0
+          brake_state = 0x31   # Transition/Release state
+          apply_brake_raw = 0
       else:
-        brake_state = 0x21        # Regular driving/decelerating state
-        apply_brake_raw = int(clip(apply_brake * 400, 0, 1500))  # Map m/s^2 cleanly to 16-bit range
+          if apply_brake > 0.01:
+              brake_state = 0x21   # Actively braking
+        
+        # --- ADJUST BRAKING FORCE HERE ---
+        # 200 = The multiplier (Lower = softer braking, Higher = stronger braking)
+        # 800 = The maximum cap (Prevents openpilot from slamming the brakes too hard)
+              apply_brake_raw = int(clip(apply_brake * 200, 0, 800))
+        
+          else:
+              brake_state = 0x00   # Coasting / No brake requested
+              apply_brake_raw = 0
 
       self.last_standstill = standstill_req
       
