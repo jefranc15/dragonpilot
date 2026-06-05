@@ -24,6 +24,7 @@ procs = [
   NativeProcess("locationd", "selfdrive/locationd", ["./locationd"], persistent=True),
   NativeProcess("phonegpsd", "selfdrive/locationd", ["python", "phonegpsd.py"], enabled=True, persistent=True),
   NativeProcess("gpswaked", "selfdrive/locationd", ["python", "gpswaked.py"], enabled=True, persistent=True),
+  NativeProcess("rotationlockd", "selfdrive/locationd", ["python", "rotationlockd.py"], enabled=True, persistent=True),
   NativeProcess("boardd", "selfdrive/boardd", ["./boardd"], enabled=False),
   PythonProcess("calibrationd", "selfdrive.locationd.calibrationd"),
   PythonProcess("controlsd", "selfdrive.controls.controlsd"),
