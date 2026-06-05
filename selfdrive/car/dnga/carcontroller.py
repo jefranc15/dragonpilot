@@ -117,7 +117,7 @@ class CarController():
         # --- ADJUST BRAKING FORCE HERE ---
         # 200 = The multiplier (Lower = softer braking, Higher = stronger braking)
         # 800 = The maximum cap (Prevents openpilot from slamming the brakes too hard)
-              apply_brake_raw = int(clip(apply_brake * 200, 0, 800))
+              apply_brake_raw = 0
         
           else:
               brake_state = 0x00   # Coasting / No brake requested
