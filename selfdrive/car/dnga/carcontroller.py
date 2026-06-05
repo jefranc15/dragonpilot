@@ -105,10 +105,10 @@ class CarController():
           brake_state = 0x00
           apply_brake_raw = 0
       elif standstill_req:
-          brake_state = 0x30   # Factory Standstill Hold state
-          apply_brake_raw = 1219 # Full holding pressure to prevent creep
+          brake_state = 0x21   # Factory Standstill Hold state
+          apply_brake_raw = 0 # Full holding pressure to prevent creep
       elif self.last_standstill and not standstill_req:
-          brake_state = 0x31   # Transition/Release state
+          brake_state = 0x21   # Transition/Release state
           apply_brake_raw = 0
       else:
           if apply_brake > 0.01:
