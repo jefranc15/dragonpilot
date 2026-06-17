@@ -162,7 +162,6 @@ class CarController():
         CS.out.vEgo > 1.0 * CV.KPH_TO_MS and      # allow almost all speeds, but not true standstill
         apply_brake > 0.10 and                    # very small brake request threshold
         apply_brake < 0.35 and                    # reject stronger OP braking for now
-        not CS.out.gasPressed and
         not CS.out.brakePressed
       )
 
