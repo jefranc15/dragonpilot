@@ -38,6 +38,9 @@ class CarState(CarStateBase):
     self.stock_brake_mag = 0
     self.stock_acc_set_speed = 0
 
+    # Real accelerator pedal found on raw CAN: bus 1, addr 0x277, bytes 1-2 big endian
+    self.gas_raw_277 = 0
+
   def update(self, cp):
     ret = car.CarState.new_message()
 
@@ -63,8 +66,10 @@ class CarState(CarStateBase):
 
     self.is_cruise_latch = False if (ret.doorOpen or ret.seatbeltUnlatched) else self.is_cruise_latch
 
-    ret.gas = cp.vl["GAS_PEDAL"]['APPS_1']
-    ret.gasPressed = not bool(cp.vl["GAS_PEDAL_2"]["GAS_PEDAL_STEP"])
+    # Real accelerator pedal is raw CAN bus 1 addr 0x277, bytes 1-2 big endian.
+    # 0 = foot off, higher value = deeper pedal press.
+    ret.gas = clip(self.gas_raw_277 / 30000.0, 0.0, 1.0)
+    ret.gasPressed = self.gas_raw_277 > 100
 
     ret.brake = cp.vl["BRAKE"]['BRAKE_PRESSURE']
     ret.brakePressed = bool(cp.vl["BRAKE"]['BRAKE_ENGAGED'])

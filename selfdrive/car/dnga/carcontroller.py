@@ -73,6 +73,7 @@ class CarController():
 
     self.prev_enabled = False
     self.block_brake_until_frame = 0
+    self.brake_release_until_frame = 0
 
   def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
              hud_alert, left_line, right_line, lead,
@@ -177,7 +178,21 @@ class CarController():
           [1215, 1212]
         ))
 
-      brake_amt_for_hud = apply_brake if decel_req else 0.0  # Tell ACC_CMD_HUD decel only when ACC_BRAKE is active
+        # Stock-like release tail: keep pump/magnitude alive briefly after active brake.
+        # 15 control frames is about 0.15s, or about 3 ACC_BRAKE frames at 20 Hz.
+        self.brake_release_until_frame = frame + 15
+
+      elif enabled and frame < self.brake_release_until_frame and not CS.out.brakePressed:
+        # Release tail seen in stock ACC:
+        # brake_state 0x01 + pump -0.4 + magnitude 0x04c8 briefly, then neutral.
+        brake_state = 0x01
+        pump_reaction = -0.4
+        brake_mag = 0x04c8
+
+      else:
+        self.brake_release_until_frame = 0
+
+      brake_amt_for_hud = apply_brake if decel_req else 0.0  # Decel HUD only during active 0x21 braking
 
       can_sends.append(  # Add ACC_CMD_HUD message
         dnga_create_accel_command(  # Build 0x273 ACC command frame

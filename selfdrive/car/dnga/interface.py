@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from cereal import car
+from cereal import car, log
 from selfdrive.swaglog import cloudlog
 from selfdrive.config import Conversions as CV
 from selfdrive.car import STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness, gen_empty_fingerprint, get_safety_config
@@ -75,6 +75,22 @@ class CarInterface(CarInterfaceBase):
 
   def update(self, c, can_strings, dragonconf):
     self.dragonconf = dragonconf
+
+    # Read real accelerator pedal directly from raw CAN:
+    # bus 1, addr 0x277, bytes 1-2 big endian.
+    # This signal is not currently defined in dnga_hev.dbc and is not on parser bus 0.
+    for can_str in can_strings:
+      try:
+        evt = log.Event.from_bytes(can_str)
+        if evt.which() == "can":
+          for msg in evt.can:
+            if msg.src == 1 and msg.address == 0x277:
+              dat = bytes(msg.dat)
+              if len(dat) >= 3:
+                self.CS.gas_raw_277 = int.from_bytes(dat[1:3], "big")
+      except Exception:
+        pass
+
     self.cp.update_strings(can_strings)
 
     ret = self.CS.update(self.cp)
