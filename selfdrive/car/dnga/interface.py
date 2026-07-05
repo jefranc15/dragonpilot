@@ -38,7 +38,7 @@ class CarInterface(CarInterfaceBase):
     ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0.], [0.]]
     ret.longitudinalTuning.kpV = [0.9, 0.8, 0.8]
 
-    ret.enableGasInterceptor = 0x201 in fingerprint[0] or 0x401 in fingerprint[0]
+    ret.enableGasInterceptor = False  # no physical gas interceptor
     
     # OP takes full ownership of gas and brakes again
     ret.openpilotLongitudinalControl = True

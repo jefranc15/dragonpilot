@@ -74,6 +74,10 @@ class CarController():
     self.prev_enabled = False
     self.block_brake_until_frame = 0
     self.brake_release_until_frame = 0
+    self.brake_req_counter = 0
+    self.brake_release_counter = 0
+    self.brake_active = False
+    self.brake_active = False
 
   def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
              hud_alert, left_line, right_line, lead,
@@ -113,8 +117,9 @@ class CarController():
 
     self.prev_enabled = enabled  # Save enabled state for the next control cycle
 
-    if self.need_clear_engine or frame < 1000:  # Send clear-code helper during startup or if ClearCode feature is enabled
-      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))  # Add diagnostic clear-code CAN frame
+    # Do not send diagnostic clear-code frames automatically at startup.
+    if self.need_clear_engine:
+      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))
 
     # -----------------------------
     # Steering command, 50 Hz
@@ -136,8 +141,15 @@ class CarController():
     if (frame % 5) == 0:  # Send ACC/HUD messages every 5 frames
 
       boost = interp(CS.out.vEgo, [0.2, 0.5, 18.0, 23.0], [0.0, 1.0, 1.0, 1.0])  # Reduce low-speed accel contribution
-      base_speed = getattr(actuators, 'speed', CS.out.vEgo)  # Use actuator target speed if present, else current speed
-      des_speed = max(0.0, base_speed + clip(actuators.accel * boost, -1.0, 1.0))  # Desired speed sent to ACC_CMD_HUD
+
+      # ACC_CMD_HUD appears to need a stronger target during acceleration.
+      # For positive OP accel, command toward the cruise set speed instead of only
+      # current speed + small accel delta.
+      if enabled and actuators.accel > 0.05:
+        des_speed = max(CS.out.vEgo, CS.cruise_speed)
+      else:
+        base_speed = getattr(actuators, 'speed', CS.out.vEgo)
+        des_speed = max(0.0, base_speed + clip(actuators.accel * boost, -1.0, 0.0))
 
       # -----------------------------
       # ACC_BRAKE / 0x271 state map from logs
@@ -157,42 +169,116 @@ class CarController():
         pump_reaction = 0.0  # No pump reaction while not braking
         brake_mag = 200  # Stock neutral magnitude 0x00C8
 
-      decel_req = (
+      # -----------------------------
+      # Stock-like moving brake scale, v2.5b cut-in smoother
+      # -----------------------------
+      #
+      # Goal:
+      #   - avoid 0x01 / 0x21 chatter
+      #   - avoid holding brake after OP asks to accelerate
+      #   - use only original weak known-safe brake magnitude
+      #   - no 1398, no 1646, no 0x31, no 0x30
+
+      # V2.4: dynamic brake request.
+      # apply_brake = OP requested decel/brake.
+      # overspeed_brake = extra gentle brake when car is above set speed.
+      set_speed = CS.out.cruiseState.speed
+      if set_speed <= 0.1:
+        set_speed = CS.out.cruiseState.speedCluster
+
+      overspeed = 0.0
+      if enabled and set_speed > 0.1:
+        overspeed = max(0.0, CS.out.vEgo - set_speed)
+
+      # Overspeed brake is intentionally gentle.
+      # 0.8 m/s = 2.9 kph over set speed
+      # 2.0 m/s = 7.2 kph over set speed
+      # 4.0 m/s = 14.4 kph over set speed
+      overspeed_brake = interp(overspeed, [1.5, 3.0, 5.0], [0.0, 0.10, 0.32])
+
+      # Use whichever asks for more brake: OP decel or overspeed correction.
+      brake_request = max(apply_brake, overspeed_brake)
+
+      # V2.5b: cut-in smoother.
+      # When a new lead suddenly appears at higher speed, avoid immediate 0x21 brake bite.
+      prev_lead_visible = getattr(self, "prev_lead_visible", False)
+      lead_just_appeared = lead and not prev_lead_visible
+      self.prev_lead_visible = lead
+
+      if lead_just_appeared and CS.out.vEgo > 7.0:  # above ~25 kph
+        self.cut_in_soft_until_frame = frame + 50  # ~0.5s at 100Hz
+
+      cut_in_soft_active = frame < getattr(self, "cut_in_soft_until_frame", 0)
+
+      # During new-lead cut-in soft window, block sudden brake bite unless decel is urgent.
+      cut_in_brake_ok = (
+        not cut_in_soft_active or
+        (brake_request >= 0.65 and CS.out.aEgo < -0.10)
+      )
+
+
+      # Keep the anti-jerk aEgo guard for normal braking, but allow brake if
+      # OP/overspeed is asking for a clearly stronger sustained decel.
+      accel_guard_ok = CS.out.aEgo < 0.05  # V2.5b: strict anti-jerk guard
+
+      brake_allowed = (
         enabled and
+        CS.out.cruiseState.enabled and
+        not CS.out.standstill and
         frame > self.block_brake_until_frame and
-        CS.out.vEgo > 1.0 * CV.KPH_TO_MS and      # allow almost all speeds, but not true standstill
-        apply_brake > 0.10 and                    # very small brake request threshold
-        apply_brake < 0.35 and                    # reject stronger OP braking for now
+        CS.out.vEgo > 1.0 and  # V2.4: allow 0x21 down to ~3.6 kph
+        accel_guard_ok and
+        cut_in_brake_ok and  # V2.5b: avoid sudden 0x21 bite on new lead cut-in
+        not CS.out.gasPressed and
         not CS.out.brakePressed
       )
+
+      if brake_allowed:
+        if brake_request > 0.30:
+          self.brake_req_counter = min(self.brake_req_counter + 1, 10)
+          self.brake_release_counter = 0
+        elif brake_request < 0.08:
+          self.brake_release_counter = min(self.brake_release_counter + 1, 10)
+          self.brake_req_counter = 0
+        # between 0.08 and 0.18: hold current active state briefly
+      else:
+        self.brake_req_counter = 0
+        self.brake_release_counter = 0
+        self.brake_active = False
+
+      # Engage after ~0.20s at 20 Hz, release after ~0.10s.
+      if not self.brake_active and self.brake_req_counter >= 4:
+        self.brake_active = True
+      elif self.brake_active and self.brake_release_counter >= 2:
+        self.brake_active = False
+
+      decel_req = brake_allowed and self.brake_active
 
       if decel_req:
         brake_state = 0x21
         pump_reaction = -0.4
 
-        # Very soft all-speed test map.
-        # Keep this narrow first because 0x21 itself can brake strongly.
-        brake_mag = int(interp(
-          clip(apply_brake, 0.10, 0.35),
-          [0.10, 0.35],
-          [1215, 1212]
-        ))
+        # V1.6: gentlest stock-like 0x21 entry.
+        # Keep pump -0.4 / 0xFC, but use fixed 1219 to reduce brake bite.
+        # V2.4:
+        # Same pump stage only: pump stays 0xFC / -0.4.
+        # 1219 = gentle
+        # 1215 = medium within gentle pump stage
+        # 1212 = strongest tested within gentle pump stage
+        # V2.5b:
+        # Keep V2.3/V2.5 low-speed brake.
+        # Do not use 1212 at highway speed; it caused jerk.
+        # Only allow mild 1215 at higher speed after the car is already decelerating.
+        if CS.out.vEgo < 2.2:
+          brake_mag = 1212
+        elif CS.out.vEgo < 2.8:
+          brake_mag = 1215
+        elif brake_request >= 0.75 and CS.out.aEgo < -0.15:
+          brake_mag = 1215
+        else:
+          brake_mag = 1219
 
-        # Stock-like release tail: keep pump/magnitude alive briefly after active brake.
-        # 15 control frames is about 0.15s, or about 3 ACC_BRAKE frames at 20 Hz.
-        self.brake_release_until_frame = frame + 15
-
-      elif enabled and frame < self.brake_release_until_frame and not CS.out.brakePressed:
-        # Release tail seen in stock ACC:
-        # brake_state 0x01 + pump -0.4 + magnitude 0x04c8 briefly, then neutral.
-        brake_state = 0x01
-        pump_reaction = -0.4
-        brake_mag = 0x04c8
-
-      else:
-        self.brake_release_until_frame = 0
-
-      brake_amt_for_hud = apply_brake if decel_req else 0.0  # Decel HUD only during active 0x21 braking
+      brake_amt_for_hud = clip(brake_request, 0.0, 0.60) if decel_req else 0.0
 
       can_sends.append(  # Add ACC_CMD_HUD message
         dnga_create_accel_command(  # Build 0x273 ACC command frame
