@@ -34,7 +34,10 @@ X_EGO_COST = 0.
 V_EGO_COST = 0.
 A_EGO_COST = 0.
 J_EGO_COST = 5.0
-A_CHANGE_COST = .5
+# The residual is 20*(a_ego-prev_a), so 0.5 here gives an effective
+# acceleration-change weight of 0.5 * 20^2 = 200, matching the scale used
+# by newer Buka/openpilot MPC code without changing this old solver model.
+A_CHANGE_COST = 0.5
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .5
 LIMIT_COST = 1e6
@@ -50,19 +53,14 @@ T_IDXS = np.array(T_IDXS_LST)
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 MIN_ACCEL = -3.5
 T_FOLLOW = 1.45
-COMFORT_BRAKE = 2.5
-STOP_DISTANCE = 5.5
+COMFORT_BRAKE = 2.5  # Same physical comfort-brake value used by Buka staging
+STOP_DISTANCE = 7.0  # Conservative stopped-lead base distance
 
 def get_stopped_equivalence_factor(v_lead, v_ego, t_follow=T_FOLLOW):
-  # KRKeegan this offset rapidly decreases the following distance when the lead pulls
-  # away, resulting in an early demand for acceleration.
-  v_diff_offset = 0
-  if np.all(v_lead - v_ego > 0):
-    v_diff_offset = ((v_lead - v_ego) * 1.)
-    v_diff_offset = np.clip(v_diff_offset, 0, STOP_DISTANCE / 2)
-    v_diff_offset = np.maximum(v_diff_offset * ((10 - v_ego)/10), 0)
-  distance = (v_lead**2) / (2 * COMFORT_BRAKE) + v_diff_offset
-  return distance
+  # V2.5S: standard moving-lead equivalence. The previous KRKeegan offset
+  # reduced the desired gap as soon as the lead pulled away, creating an early
+  # acceleration request that could contribute to accel/brake oscillation.
+  return (v_lead**2) / (2 * COMFORT_BRAKE)
 
 def get_safe_obstacle_distance(v_ego, t_follow=T_FOLLOW):
   return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
@@ -240,22 +238,11 @@ class LongitudinalMpc:
       self.set_weights_for_lead_policy()
 
   def get_cost_multipliers(self):
-    v_ego = self.x0[1]
-    v_ego_bps = [0, 10]
-    TFs = [1.0, 1.25, T_FOLLOW]
-    # KRKeegan adjustments to costs for different TFs
-    # these were calculated using the test_longitudial.py deceleration tests
-    a_change_tf = interp(self.desired_TF, TFs, [.1, .8, 1.])
-    j_ego_tf = interp(self.desired_TF, TFs, [.6, .8, 1.])
-    d_zone_tf = interp(self.desired_TF, TFs, [1.6, 1.3, 1.])
-    # KRKeegan adjustments to improve sluggish acceleration these also
-    # alter deceleration in the same range
-    j_ego_v_ego = interp(v_ego, v_ego_bps, [.05, 1.])
-    a_change_v_ego = interp(v_ego, v_ego_bps, [.05, 1.])
-    # Select the appropriate min/max of the options
-    j_ego = min(j_ego_tf, j_ego_v_ego)
-    a_change = min(a_change_tf, a_change_v_ego)
-    return (a_change, j_ego, d_zone_tf)
+    # Keep meaningful acceleration-change and jerk resistance at every speed.
+    # The old low-speed multipliers fell to 0.05, allowing the MPC to reverse
+    # rapidly between braking and acceleration precisely where smooth following
+    # is most important.
+    return (1.0, 1.0, 1.0)
 
   def set_weights_for_lead_policy(self):
     cost_mulitpliers = self.get_cost_multipliers()
@@ -263,8 +250,9 @@ class LongitudinalMpc:
                                    A_EGO_COST, A_CHANGE_COST * cost_mulitpliers[0],
                                    J_EGO_COST * cost_mulitpliers[1]]))
     for i in range(N):
-      # KRKeegan, decreased timescale to .5s since Toyota lag is set to .3s
-      W[4,4] = A_CHANGE_COST * cost_mulitpliers[0] * np.interp(T_IDXS[i], [0.0, 0.5, 2.0], [1.0, 1.0, 0.0])
+      # V2.5S: hold full acceleration-continuity weight through the first
+      # second, matching the newer MPC shape and the 0.40-0.50 s actuator delay.
+      W[4,4] = A_CHANGE_COST * cost_mulitpliers[0] * np.interp(T_IDXS[i], [0.0, 1.0, 2.0], [1.0, 1.0, 0.0])
       self.solver.cost_set(i, 'W', W)
     # Setting the slice without the copy make the array not contiguous,
     # causing issues with the C interface.
@@ -334,22 +322,19 @@ class LongitudinalMpc:
     self.cruise_max_a = max_a
 
   def update_TF(self, carstate):
-    if carstate.distanceLines == 1: # Traffic
-      # At slow speeds more time, decrease time up to 60mph
-      # in kph ~= 0    10    20     30     40     50     60     90    150
-      x_vel = [0, 2.25, 4.5, 6.75, 9, 11.25, 13.5, 15.75, 18, 20.25, 22.5, 24.75, 27, 29.25, 31.5, 33.75, 36, 38.25, 40.5]
-      y_dist = [1.25, 1.24, 1.23, 1.22, 1.21, 1.20, 1.18, 1.16, 1.13, 1.11, 1.09, 1.07, 1.05, 1.05, 1.05, 1.05, 1.05, 1.05, 1.05]
-      self.desired_TF = np.interp(carstate.vEgo, x_vel, y_dist)
-    elif carstate.distanceLines == 2: # Relaxed
-      x_vel = [0,   2.788,  5.56,  8.333,  11.11, 13.89, 16.67, 25.0, 41.67]
-      y_dist = [1.24, 1.24, 1.27,  1.29,   1.35,  1.35,   1.35,  1.1,  1.3]
-      self.desired_TF = np.interp(carstate.vEgo, x_vel, y_dist)
-      #self.desired_TF = 1.7
+    # V2.5S bar mapping. distanceLines is published by DNGA carstate.py:
+    #   1 bar = aggressive, 2 bars = standard, 3 bars = relaxed.
+    #
+    # These are physical time-gap values with the same meaning across the old
+    # and new MPC architectures, so they are safe to port selectively. We do
+    # not port staging's PID gains or single-delay API.
+    distance_lines = int(clip(getattr(carstate, "distanceLines", 2), 1, 3))
+    if distance_lines == 1:
+      self.desired_TF = 1.25
+    elif distance_lines == 2:
+      self.desired_TF = 1.45
     else:
-      x_vel = [0.0, 2.788,  5.56,  8.333,  11.11, 13.89, 19.44, 27.78, 41.67]  # velocities
-      y_dist = [1.27, 1.27, 1.29,   1.32,   1.38,  1.38,  1.38,  1.619, 1.8]
-      self.desired_TF = np.interp(carstate.vEgo, x_vel, y_dist)
-      #self.desired_TF = T_FOLLOW
+      self.desired_TF = 1.75
 
   def update(self, carstate, radarstate, v_cruise, prev_accel_constraint=False):
     self.update_TF(carstate)

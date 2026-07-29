@@ -1,0 +1,551 @@
+DNGA mapping logger 2.0-light
+Passive/read-only. It does not transmit CAN.
+No vehicle files are modified.
+Summary: /data/openpilot/dnga_mapping_v2_summary_0719_091121.csv.gz
+Raw event CAN: /data/openpilot/dnga_mapping_v2_raw_0719_091121.csv.gz
+Events: /data/openpilot/dnga_mapping_v2_events_0719_091121.csv
+Automatic raw capture: manual brake and stock 0x271 brake.
+Buttons/HUD: use the ctl capture command.
+5.0s rows=101 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=0 opLongUnexpected=no
+10.0s rows=201 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=0 opLongUnexpected=no
+15.0s rows=301 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=0 opLongUnexpected=no
+23.0s rows=335 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=101060 opLongUnexpected=no
+29.3s rows=337 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=121852 opLongUnexpected=no
+34.3s rows=403 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=141216 opLongUnexpected=no
+39.8s rows=496 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=164650 opLongUnexpected=no
+44.8s rows=577 speed=2.4 aEgo=0.323 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=184484 opLongUnexpected=no
+49.8s rows=674 speed=3.9 aEgo=0.286 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=205148 opLongUnexpected=no
+54.8s rows=773 speed=12.3 aEgo=-0.295 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=220230 opLongUnexpected=no
+60.3s rows=847 speed=6.6 aEgo=-0.546 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=250336 opLongUnexpected=no
+65.4s rows=907 speed=11.8 aEgo=0.378 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=269268 opLongUnexpected=no
+70.4s rows=1006 speed=5.0 aEgo=-0.395 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=289907 opLongUnexpected=no
+75.4s rows=1105 speed=7.8 aEgo=0.962 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=310630 opLongUnexpected=no
+80.4s rows=1204 speed=24.7 aEgo=0.493 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=325574 opLongUnexpected=no
+85.5s rows=1305 speed=27.5 aEgo=-0.368 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=325574 opLongUnexpected=no
+90.5s rows=1405 speed=27.0 aEgo=-0.050 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=325574 opLongUnexpected=no
+97.3s rows=1440 speed=26.4 aEgo=-0.066 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=406410 opLongUnexpected=no
+102.7s rows=1442 speed=24.5 aEgo=-0.155 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=424396 opLongUnexpected=no
+107.7s rows=1512 speed=24.4 aEgo=-0.242 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=443806 opLongUnexpected=no
+112.8s rows=1610 speed=25.4 aEgo=-0.484 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=464620 opLongUnexpected=no
+117.8s rows=1706 speed=13.9 aEgo=-0.462 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=485296 opLongUnexpected=no
+122.8s rows=1804 speed=11.2 aEgo=-0.603 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=506024 opLongUnexpected=no
+127.8s rows=1903 speed=13.9 aEgo=0.282 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=526636 opLongUnexpected=no
+132.9s rows=2002 speed=16.4 aEgo=0.168 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=534694 opLongUnexpected=no
+137.9s rows=2102 speed=19.5 aEgo=0.140 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=534694 opLongUnexpected=no
+146.9s rows=2186 speed=16.6 aEgo=-0.396 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=610070 opLongUnexpected=no
+152.0s rows=2210 speed=12.9 aEgo=-0.394 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=610070 opLongUnexpected=no
+157.0s rows=2310 speed=19.1 aEgo=0.540 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=610070 opLongUnexpected=no
+164.0s rows=2362 speed=24.4 aEgo=0.427 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=679934 opLongUnexpected=no
+169.5s rows=2365 speed=26.3 aEgo=0.189 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=698470 opLongUnexpected=no
+174.5s rows=2452 speed=22.4 aEgo=-0.468 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=718766 opLongUnexpected=no
+179.5s rows=2548 speed=21.8 aEgo=0.434 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=739526 opLongUnexpected=no
+184.6s rows=2644 speed=23.9 aEgo=-0.222 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+189.6s rows=2744 speed=20.9 aEgo=0.132 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+194.6s rows=2844 speed=25.7 aEgo=-0.355 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+199.6s rows=2944 speed=20.7 aEgo=-0.344 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+204.6s rows=3044 speed=19.1 aEgo=-0.329 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+209.7s rows=3144 speed=13.0 aEgo=-0.129 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+214.7s rows=3245 speed=17.5 aEgo=0.386 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=760080 opLongUnexpected=no
+222.8s rows=3271 speed=3.4 aEgo=-0.578 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=864390 opLongUnexpected=no
+229.7s rows=3273 speed=-0.0 aEgo=-0.004 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=888032 opLongUnexpected=no
+234.7s rows=3332 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=907194 opLongUnexpected=no
+239.7s rows=3430 speed=1.2 aEgo=0.667 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=927818 opLongUnexpected=no
+244.7s rows=3529 speed=-0.1 aEgo=-0.279 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=948550 opLongUnexpected=no
+249.8s rows=3628 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=969296 opLongUnexpected=no
+254.8s rows=3728 speed=-0.1 aEgo=-0.261 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=990054 opLongUnexpected=no
+259.8s rows=3826 speed=12.9 aEgo=0.504 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1010650 opLongUnexpected=no
+264.8s rows=3926 speed=14.1 aEgo=0.134 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1014046 opLongUnexpected=no
+270.4s rows=3982 speed=15.3 aEgo=0.279 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1056678 opLongUnexpected=no
+275.4s rows=4006 speed=30.9 aEgo=-0.649 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1074910 opLongUnexpected=no
+280.4s rows=4099 speed=16.4 aEgo=-0.339 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1095668 opLongUnexpected=no
+285.4s rows=4195 speed=14.1 aEgo=-1.284 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1116216 opLongUnexpected=no
+290.4s rows=4291 speed=3.6 aEgo=-0.491 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1136865 opLongUnexpected=no
+295.5s rows=4387 speed=8.4 aEgo=0.816 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1157578 opLongUnexpected=no
+300.5s rows=4484 speed=8.3 aEgo=-0.148 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1178300 opLongUnexpected=no
+305.5s rows=4583 speed=2.1 aEgo=-0.265 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1199016 opLongUnexpected=no
+310.5s rows=4683 speed=4.3 aEgo=0.376 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1219734 opLongUnexpected=no
+315.6s rows=4780 speed=20.3 aEgo=0.917 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1240336 opLongUnexpected=no
+321.7s rows=4853 speed=13.8 aEgo=-1.582 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1266612 opLongUnexpected=no
+326.8s rows=4930 speed=30.7 aEgo=0.935 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1286484 opLongUnexpected=no
+331.8s rows=5029 speed=26.1 aEgo=-0.472 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1290466 opLongUnexpected=no
+336.9s rows=5042 speed=31.5 aEgo=1.467 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1328276 opLongUnexpected=no
+341.9s rows=5140 speed=36.1 aEgo=0.026 rx208_ACC_RDY=0 PWR=0 rx271=ready_no_brake mag=200 event=yes raw=1348960 opLongUnexpected=no
+347.0s rows=5235 speed=34.5 aEgo=-0.671 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1369716 opLongUnexpected=no
+352.0s rows=5330 speed=21.3 aEgo=-0.380 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1390422 opLongUnexpected=no
+357.0s rows=5424 speed=18.5 aEgo=-0.219 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1411022 opLongUnexpected=no
+362.0s rows=5522 speed=5.0 aEgo=-0.419 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1431618 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+367.1s rows=5603 speed=12.1 aEgo=0.201 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1454112 opLongUnexpected=no
+372.1s rows=5701 speed=17.8 aEgo=-0.037 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1462246 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+377.1s rows=5798 speed=18.3 aEgo=0.086 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1462246 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+382.2s rows=5898 speed=22.1 aEgo=0.519 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1462246 opLongUnexpected=no
+391.7s rows=5961 speed=2.6 aEgo=0.495 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1562554 opLongUnexpected=no
+398.5s rows=5963 speed=4.0 aEgo=1.045 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1585280 opLongUnexpected=no
+403.5s rows=6021 speed=19.2 aEgo=0.423 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1599240 opLongUnexpected=no
+408.5s rows=6121 speed=23.9 aEgo=-0.060 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1599240 opLongUnexpected=no
+413.7s rows=6157 speed=19.4 aEgo=0.234 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1650170 opLongUnexpected=no
+419.9s rows=6187 speed=12.0 aEgo=-0.867 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1673356 opLongUnexpected=no
+424.9s rows=6246 speed=-0.0 aEgo=-0.071 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1692590 opLongUnexpected=no
+429.9s rows=6340 speed=11.7 aEgo=0.221 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1713266 opLongUnexpected=no
+436.1s rows=6432 speed=22.3 aEgo=0.092 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1740422 opLongUnexpected=no
+441.1s rows=6477 speed=19.4 aEgo=-0.471 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1759234 opLongUnexpected=no
+446.1s rows=6571 speed=25.4 aEgo=1.044 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1779874 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+451.1s rows=6665 speed=29.1 aEgo=0.412 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1787288 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+456.1s rows=6765 speed=24.0 aEgo=-0.485 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1787288 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+465.9s rows=6856 speed=18.6 aEgo=-0.336 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1875920 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+471.9s rows=6858 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1897908 opLongUnexpected=no
+476.9s rows=6924 speed=4.7 aEgo=0.367 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1917346 opLongUnexpected=no
+482.0s rows=7022 speed=19.5 aEgo=-0.221 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1937048 opLongUnexpected=no
+487.0s rows=7100 speed=4.6 aEgo=-0.827 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1958656 opLongUnexpected=no
+492.0s rows=7199 speed=5.0 aEgo=0.836 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=1979368 opLongUnexpected=no
+497.0s rows=7295 speed=31.0 aEgo=1.453 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1998538 opLongUnexpected=no
+502.0s rows=7395 speed=45.5 aEgo=0.155 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=1998538 opLongUnexpected=no
+507.5s rows=7413 speed=22.9 aEgo=-1.187 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2044900 opLongUnexpected=no
+512.6s rows=7467 speed=10.6 aEgo=0.188 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2064122 opLongUnexpected=no
+517.6s rows=7565 speed=9.7 aEgo=-0.062 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2084884 opLongUnexpected=no
+522.7s rows=7663 speed=4.9 aEgo=-0.617 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2105795 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+527.7s rows=7747 speed=2.7 aEgo=-0.169 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2126623 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+532.8s rows=7834 speed=2.7 aEgo=-0.174 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2153468 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+537.8s rows=7932 speed=-0.0 aEgo=-0.023 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2175698 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+542.9s rows=8000 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2197550 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+547.9s rows=8090 speed=1.6 aEgo=0.480 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2217792 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+552.9s rows=8175 speed=-0.1 aEgo=-0.276 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2238924 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+558.0s rows=8272 speed=11.9 aEgo=0.664 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2259924 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+563.1s rows=8365 speed=25.1 aEgo=0.543 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2273921 opLongUnexpected=no
+568.2s rows=8428 speed=17.0 aEgo=-0.476 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2304155 opLongUnexpected=no
+573.2s rows=8474 speed=12.5 aEgo=-0.012 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+578.2s rows=8571 speed=19.3 aEgo=0.336 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+583.2s rows=8671 speed=24.7 aEgo=0.329 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+588.3s rows=8772 speed=31.5 aEgo=0.362 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+593.3s rows=8872 speed=33.4 aEgo=-0.241 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+598.3s rows=8972 speed=32.7 aEgo=0.074 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2318573 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+603.3s rows=9072 speed=36.5 aEgo=-0.130 rx208_ACC_RDY=0 PWR=0 rx271=ready_no_brake mag=200 event=no raw=2318573 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+615.7s rows=9172 speed=35.9 aEgo=-0.224 rx208_ACC_RDY=0 PWR=0 rx271=active_brake mag=1206 event=yes raw=2427969 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+621.5s rows=9173 speed=35.9 aEgo=-0.224 rx208_ACC_RDY=0 PWR=0 rx271=ready_no_brake mag=200 event=yes raw=2450639 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+626.7s rows=9175 speed=16.1 aEgo=-0.964 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2468979 opLongUnexpected=no
+631.8s rows=9239 speed=9.1 aEgo=0.094 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2488189 opLongUnexpected=no
+636.8s rows=9338 speed=12.3 aEgo=0.347 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+can: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+641.8s rows=9437 speed=14.5 aEgo=0.162 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+646.8s rows=9537 speed=15.8 aEgo=-0.239 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+651.8s rows=9637 speed=17.2 aEgo=0.233 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+656.8s rows=9737 speed=14.5 aEgo=-0.135 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+661.9s rows=9837 speed=18.6 aEgo=0.315 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+666.9s rows=9937 speed=16.7 aEgo=0.148 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2502881 opLongUnexpected=no
+675.0s rows=9964 speed=17.1 aEgo=1.304 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2573077 opLongUnexpected=no
+680.0s rows=10026 speed=33.6 aEgo=0.769 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2573077 opLongUnexpected=no
+685.0s rows=10126 speed=41.1 aEgo=-0.053 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2573077 opLongUnexpected=no
+693.3s rows=10144 speed=24.3 aEgo=0.246 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2643329 opLongUnexpected=no
+698.3s rows=10204 speed=30.3 aEgo=0.298 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2643329 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+706.4s rows=10246 speed=11.3 aEgo=-1.192 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2735522 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+713.1s rows=10248 speed=1.1 aEgo=0.059 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2757910 opLongUnexpected=no
+718.1s rows=10305 speed=12.6 aEgo=1.117 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2777158 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+723.1s rows=10393 speed=19.4 aEgo=0.639 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2792823 opLongUnexpected=no
+longitudinalPlan: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+729.8s rows=10480 speed=23.3 aEgo=-0.355 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2828861 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+734.9s rows=10513 speed=23.4 aEgo=0.057 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2841127 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+739.9s rows=10599 speed=33.4 aEgo=0.402 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2841127 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+746.5s rows=10620 speed=23.2 aEgo=-0.236 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2899996 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+751.5s rows=10677 speed=32.3 aEgo=0.775 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=2913903 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+758.5s rows=10758 speed=24.7 aEgo=-0.744 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2951740 opLongUnexpected=no
+763.5s rows=10806 speed=28.0 aEgo=-0.180 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2970257 opLongUnexpected=no
+768.5s rows=10906 speed=16.9 aEgo=-0.556 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=2990902 opLongUnexpected=no
+773.5s rows=11006 speed=9.1 aEgo=-0.147 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3011576 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+778.5s rows=11083 speed=9.0 aEgo=-0.088 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3036123 opLongUnexpected=no
+can: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+783.5s rows=11183 speed=12.2 aEgo=0.972 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3056707 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+788.6s rows=11240 speed=12.8 aEgo=0.799 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+793.6s rows=11340 speed=27.4 aEgo=0.278 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+798.6s rows=11434 speed=28.4 aEgo=-0.088 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+803.6s rows=11534 speed=21.1 aEgo=-0.330 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+808.6s rows=11631 speed=18.0 aEgo=-0.134 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+813.6s rows=11720 speed=21.1 aEgo=0.286 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+818.7s rows=11821 speed=26.4 aEgo=0.266 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+823.7s rows=11922 speed=30.8 aEgo=0.178 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+828.7s rows=12022 speed=30.2 aEgo=-0.288 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+833.8s rows=12122 speed=27.7 aEgo=-0.301 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+838.8s rows=12217 speed=26.2 aEgo=-0.027 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+843.8s rows=12307 speed=26.3 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+848.8s rows=12407 speed=25.1 aEgo=0.271 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+853.8s rows=12503 speed=25.4 aEgo=-0.296 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+858.9s rows=12596 speed=27.2 aEgo=0.125 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+863.9s rows=12694 speed=27.6 aEgo=0.030 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3073608 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+875.2s rows=12789 speed=18.9 aEgo=-0.033 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3143812 opLongUnexpected=no
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+880.3s rows=12868 speed=16.8 aEgo=-0.117 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3166226 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+885.3s rows=12928 speed=9.2 aEgo=-0.506 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3185788 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+890.7s rows=13007 speed=8.3 aEgo=0.274 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3208816 opLongUnexpected=no
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+896.2s rows=13101 speed=17.9 aEgo=-0.648 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3232142 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+901.3s rows=13177 speed=7.5 aEgo=-0.715 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3253755 opLongUnexpected=no
+906.3s rows=13277 speed=-0.0 aEgo=-0.007 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3274423 opLongUnexpected=no
+911.3s rows=13377 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3295023 opLongUnexpected=no
+916.3s rows=13477 speed=4.8 aEgo=-0.027 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3315761 opLongUnexpected=no
+can: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+921.3s rows=13551 speed=3.2 aEgo=1.123 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3336869 opLongUnexpected=no
+926.4s rows=13651 speed=2.6 aEgo=-0.234 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3357605 opLongUnexpected=no
+931.4s rows=13751 speed=-0.0 aEgo=-0.001 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3378183 opLongUnexpected=no
+936.4s rows=13851 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3398829 opLongUnexpected=no
+941.4s rows=13951 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3419494 opLongUnexpected=no
+946.4s rows=14051 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3440099 opLongUnexpected=no
+951.4s rows=14151 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+956.4s rows=14248 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+961.4s rows=14345 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+966.4s rows=14445 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+971.5s rows=14546 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+976.5s rows=14644 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+981.5s rows=14738 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+986.6s rows=14839 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+991.6s rows=14940 speed=0.0 aEgo=0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3458485 opLongUnexpected=no
+can: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+1001.9s rows=15018 speed=7.9 aEgo=0.023 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3528695 opLongUnexpected=no
+1007.6s rows=15048 speed=8.5 aEgo=0.462 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3579695 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+1012.6s rows=15085 speed=12.4 aEgo=0.169 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3589383 opLongUnexpected=no
+liveParameters: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+longitudinalPlan: Reader was evicted, reconnecting
+1017.8s rows=15130 speed=11.1 aEgo=-0.163 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3620219 opLongUnexpected=no
+1022.8s rows=15227 speed=10.4 aEgo=0.275 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3640759 opLongUnexpected=no
+1027.8s rows=15327 speed=10.1 aEgo=0.022 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=no raw=3653571 opLongUnexpected=no
+1032.8s rows=15395 speed=8.2 aEgo=-0.350 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3682053 opLongUnexpected=no
+1037.8s rows=15495 speed=5.3 aEgo=0.087 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3702692 opLongUnexpected=no
+1042.8s rows=15595 speed=3.7 aEgo=0.079 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3723319 opLongUnexpected=no
+1047.9s rows=15691 speed=5.8 aEgo=0.229 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3744184 opLongUnexpected=no
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+carState: Reader was evicted, reconnecting
+carControl: Reader was evicted, reconnecting
+controlsState: Reader was evicted, reconnecting
+sendcan: Reader was evicted, reconnecting
+1053.1s rows=15762 speed=5.4 aEgo=0.238 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3770222 opLongUnexpected=no
+longitudinalPlan: Reader was evicted, reconnecting
+liveParameters: Reader was evicted, reconnecting
+can: Reader was evicted, reconnecting
+radarState: Reader was evicted, reconnecting
+1058.2s rows=15837 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3796495 opLongUnexpected=no
+1063.2s rows=15937 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3808156 opLongUnexpected=no
+1068.2s rows=16037 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3808156 opLongUnexpected=no
+1073.2s rows=16137 speed=-0.0 aEgo=-0.000 rx208_ACC_RDY=0 PWR=0 rx271=disabled mag=200 event=yes raw=3808156 opLongUnexpected=no

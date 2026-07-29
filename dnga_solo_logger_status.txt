@@ -1,0 +1,543 @@
+DNGA solo mapping logger 3.0-solo
+Passive/read-only. It does not transmit CAN.
+No vehicle code is modified.
+
+FIRST 90 SECONDS: remain parked and follow the phase shown.
+During each button phase, press and release that button 3 times.
+After PREPARE_TO_DRIVE changes to DRIVE, close SSH and drive.
+
+Summary: /data/openpilot/dnga_solo_summary_0722_103659.csv.gz
+Selected CAN: /data/openpilot/dnga_solo_selected_can_0722_103659.csv.gz
+Raw events: /data/openpilot/dnga_solo_raw_events_0722_103659.csv.gz
+Events: /data/openpilot/dnga_solo_events_0722_103659.csv
+   2.0s phase=BASELINE           remain= 3.0 speed=  0.0 cruise=off rx271=disabled         mag=200 raw=0 selected=1692 loop= 50.0ms
+   5.3s phase=ACC_MAIN           remain= 9.7 speed=  0.1 cruise=off rx271=disabled         mag=200 raw=32598 selected=4906 loop=1444.7ms
+   7.6s phase=ACC_MAIN           remain= 7.4 speed= -0.0 cruise=off rx271=disabled         mag=200 raw=43340 selected=6524 loop=861.9ms
+   9.6s phase=ACC_MAIN           remain= 5.4 speed=  1.2 cruise=off rx271=disabled         mag=200 raw=53709 selected=8086 loop= 50.0ms
+  11.7s phase=ACC_MAIN           remain= 3.3 speed=  2.9 cruise=off rx271=disabled         mag=200 raw=65030 selected=9792 loop= 50.0ms
+  13.7s phase=ACC_MAIN           remain= 1.3 speed=  2.7 cruise=off rx271=disabled         mag=200 raw=76181 selected=11470 loop= 51.1ms
+  15.7s phase=SET_MINUS          remain= 9.3 speed=  3.4 cruise=off rx271=disabled         mag=200 raw=87484 selected=13168 loop= 50.0ms
+  17.7s phase=SET_MINUS          remain= 7.3 speed=  4.0 cruise=off rx271=disabled         mag=200 raw=88902 selected=14848 loop= 50.0ms
+  21.0s phase=SET_MINUS          remain= 4.0 speed=  4.7 cruise=off rx271=disabled         mag=200 raw=119604 selected=18002 loop=1380.8ms
+  23.0s phase=SET_MINUS          remain= 2.0 speed=  4.0 cruise=off rx271=disabled         mag=200 raw=129275 selected=19458 loop=769.2ms
+  25.0s phase=RES_PLUS           remain=10.0 speed=  5.1 cruise=off rx271=disabled         mag=200 raw=139684 selected=21018 loop= 50.0ms
+  27.1s phase=RES_PLUS           remain= 7.9 speed=  2.7 cruise=off rx271=disabled         mag=200 raw=151002 selected=22722 loop= 50.0ms
+  29.1s phase=RES_PLUS           remain= 5.9 speed=  5.4 cruise=off rx271=disabled         mag=200 raw=162200 selected=24409 loop= 50.5ms
+  31.1s phase=RES_PLUS           remain= 3.9 speed=  7.1 cruise=off rx271=disabled         mag=200 raw=173619 selected=26131 loop= 50.9ms
+  33.1s phase=RES_PLUS           remain= 1.9 speed=  8.9 cruise=off rx271=disabled         mag=200 raw=176442 selected=27818 loop= 50.0ms
+  36.0s phase=CANCEL             remain= 9.0 speed= 15.3 cruise=off rx271=disabled         mag=200 raw=202832 selected=30525 loop=1208.2ms
+  38.1s phase=CANCEL             remain= 6.9 speed= 14.1 cruise=off rx271=disabled         mag=200 raw=213050 selected=32065 loop=407.0ms
+  40.1s phase=CANCEL             remain= 4.9 speed= 12.5 cruise=off rx271=disabled         mag=200 raw=223865 selected=33690 loop= 50.6ms
+  42.2s phase=CANCEL             remain= 2.8 speed=  9.3 cruise=off rx271=disabled         mag=200 raw=235083 selected=35379 loop= 50.0ms
+  44.2s phase=CANCEL             remain= 0.8 speed=  2.0 cruise=off rx271=disabled         mag=200 raw=246385 selected=37083 loop= 50.0ms
+  46.2s phase=DISTANCE           remain= 8.8 speed=  0.4 cruise=off rx271=disabled         mag=200 raw=257528 selected=38761 loop= 50.0ms
+  48.2s phase=DISTANCE           remain= 6.8 speed=  1.1 cruise=off rx271=disabled         mag=200 raw=261208 selected=40448 loop= 50.0ms
+  50.2s phase=DISTANCE           remain= 4.8 speed=  0.8 cruise=off rx271=disabled         mag=200 raw=261208 selected=42124 loop= 50.0ms
+  52.9s phase=DISTANCE           remain= 2.1 speed=  1.3 cruise=off rx271=disabled         mag=200 raw=296264 selected=44598 loop=1208.8ms
+  55.0s phase=DISTANCE           remain= 0.0 speed= -0.0 cruise=off rx271=disabled         mag=200 raw=306688 selected=46165 loop=166.9ms
+  57.0s phase=LKA                remain= 8.0 speed= -0.0 cruise=off rx271=disabled         mag=200 raw=317714 selected=47827 loop= 49.6ms
+  59.0s phase=LKA                remain= 6.0 speed= -0.0 cruise=off rx271=disabled         mag=200 raw=329034 selected=49526 loop= 50.0ms
+  61.0s phase=LKA                remain= 4.0 speed=  1.8 cruise=off rx271=disabled         mag=200 raw=340294 selected=51225 loop= 50.0ms
+  63.0s phase=LKA                remain= 2.0 speed=  4.2 cruise=off rx271=disabled         mag=200 raw=347318 selected=52910 loop= 50.0ms
+  65.1s phase=NO_BUTTON_BASELINE remain= 9.9 speed=  2.0 cruise=off rx271=disabled         mag=200 raw=347318 selected=54641 loop= 50.3ms
+  68.0s phase=NO_BUTTON_BASELINE remain= 7.0 speed= 10.5 cruise=off rx271=disabled         mag=200 raw=381552 selected=57437 loop=1553.9ms
+  70.2s phase=NO_BUTTON_BASELINE remain= 4.8 speed= 18.4 cruise=off rx271=disabled         mag=200 raw=392035 selected=59016 loop=827.8ms
+  72.2s phase=NO_BUTTON_BASELINE remain= 2.8 speed= 25.7 cruise=off rx271=disabled         mag=200 raw=402562 selected=60597 loop= 50.0ms
+  74.2s phase=NO_BUTTON_BASELINE remain= 0.8 speed= 28.7 cruise=off rx271=disabled         mag=200 raw=413897 selected=62303 loop= 50.1ms
+  76.2s phase=PREPARE_TO_DRIVE   remain=13.8 speed= 27.2 cruise=off rx271=disabled         mag=200 raw=425084 selected=63981 loop= 50.0ms
+  78.3s phase=PREPARE_TO_DRIVE   remain=11.7 speed= 27.0 cruise=off rx271=disabled         mag=200 raw=436479 selected=65696 loop= 50.0ms
+  80.3s phase=PREPARE_TO_DRIVE   remain= 9.7 speed= 29.4 cruise=off rx271=disabled         mag=200 raw=437324 selected=67372 loop= 50.0ms
+  82.3s phase=PREPARE_TO_DRIVE   remain= 7.7 speed= 31.9 cruise=off rx271=disabled         mag=200 raw=437324 selected=69094 loop= 50.1ms
+  85.8s phase=PREPARE_TO_DRIVE   remain= 4.2 speed= 28.0 cruise=off rx271=disabled         mag=200 raw=480180 selected=72268 loop=1514.4ms
+  87.9s phase=PREPARE_TO_DRIVE   remain= 2.1 speed= 29.2 cruise=off rx271=disabled         mag=200 raw=490755 selected=73858 loop=449.2ms
+  89.9s phase=PREPARE_TO_DRIVE   remain= 0.1 speed= 35.3 cruise=off rx271=disabled         mag=200 raw=501566 selected=75490 loop= 52.4ms
+  91.9s phase=DRIVE              remain= 0.0 speed= 42.6 cruise=off rx271=disabled         mag=200 raw=512718 selected=77166 loop= 49.9ms
+  94.0s phase=DRIVE              remain= 0.0 speed= 44.5 cruise=on rx271=ready_no_brake   mag=200 raw=524035 selected=78872 loop= 68.9ms
+  96.0s phase=DRIVE              remain= 0.0 speed= 45.2 cruise=on rx271=ready_no_brake   mag=200 raw=527644 selected=80601 loop= 49.9ms
+  98.0s phase=DRIVE              remain= 0.0 speed= 45.0 cruise=on rx271=ready_no_brake   mag=200 raw=527644 selected=82279 loop= 50.3ms
+ 101.6s phase=DRIVE              remain= 0.0 speed= 40.7 cruise=off rx271=disabled         mag=200 raw=569935 selected=85773 loop=1992.5ms
+ 104.7s phase=DRIVE              remain= 0.0 speed= 37.4 cruise=off rx271=disabled         mag=200 raw=585488 selected=88116 loop=1276.5ms
+ 106.9s phase=DRIVE              remain= 0.0 speed= 36.7 cruise=off rx271=disabled         mag=200 raw=596238 selected=89728 loop=294.2ms
+ 108.9s phase=DRIVE              remain= 0.0 speed= 36.4 cruise=off rx271=disabled         mag=200 raw=607331 selected=91399 loop= 58.5ms
+ 111.0s phase=DRIVE              remain= 0.0 speed= 36.9 cruise=off rx271=disabled         mag=200 raw=618856 selected=93130 loop= 50.1ms
+ 113.0s phase=DRIVE              remain= 0.0 speed= 38.7 cruise=off rx271=disabled         mag=200 raw=622641 selected=94830 loop= 50.1ms
+ 115.0s phase=DRIVE              remain= 0.0 speed= 36.3 cruise=off rx271=disabled         mag=200 raw=622641 selected=96556 loop= 49.9ms
+ 117.1s phase=DRIVE              remain= 0.0 speed= 35.8 cruise=on rx271=ready_no_brake   mag=200 raw=655583 selected=98652 loop=1513.3ms
+ 119.4s phase=DRIVE              remain= 0.0 speed= 35.5 cruise=off rx271=disabled         mag=200 raw=667136 selected=100379 loop=916.9ms
+ 121.4s phase=DRIVE              remain= 0.0 speed= 36.0 cruise=off rx271=disabled         mag=200 raw=677272 selected=101899 loop= 47.3ms
+ 123.4s phase=DRIVE              remain= 0.0 speed= 34.7 cruise=off rx271=disabled         mag=200 raw=688627 selected=103604 loop= 50.1ms
+ 125.5s phase=DRIVE              remain= 0.0 speed= 32.1 cruise=off rx271=disabled         mag=200 raw=700086 selected=105326 loop= 50.0ms
+ 127.5s phase=DRIVE              remain= 0.0 speed= 29.1 cruise=off rx271=disabled         mag=200 raw=711380 selected=107020 loop= 50.0ms
+ 129.5s phase=DRIVE              remain= 0.0 speed= 25.2 cruise=off rx271=disabled         mag=200 raw=711655 selected=108710 loop= 49.2ms
+ 131.5s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=711655 selected=110386 loop= 50.3ms
+ 133.6s phase=DRIVE              remain= 0.0 speed=  9.7 cruise=off rx271=disabled         mag=200 raw=711655 selected=112104 loop= 50.0ms
+ 135.6s phase=DRIVE              remain= 0.0 speed=  7.9 cruise=off rx271=disabled         mag=200 raw=711655 selected=113813 loop= 50.0ms
+ 137.7s phase=DRIVE              remain= 0.0 speed=  4.9 cruise=off rx271=disabled         mag=200 raw=745548 selected=115537 loop= 50.0ms
+ 140.0s phase=DRIVE              remain= 0.0 speed=  9.6 cruise=off rx271=disabled         mag=200 raw=762425 selected=118077 loop=2300.8ms
+ 142.1s phase=DRIVE              remain= 0.0 speed= 17.0 cruise=off rx271=disabled         mag=200 raw=772718 selected=119619 loop=2110.1ms
+ 144.2s phase=DRIVE              remain= 0.0 speed= 17.2 cruise=off rx271=disabled         mag=200 raw=783176 selected=121186 loop=825.0ms
+ 146.3s phase=DRIVE              remain= 0.0 speed= 25.1 cruise=off rx271=disabled         mag=200 raw=793628 selected=122753 loop= 55.8ms
+ 148.3s phase=DRIVE              remain= 0.0 speed= 32.9 cruise=off rx271=disabled         mag=200 raw=805032 selected=124466 loop= 50.0ms
+ 150.3s phase=DRIVE              remain= 0.0 speed= 33.8 cruise=off rx271=disabled         mag=200 raw=812679 selected=126169 loop= 50.0ms
+ 152.4s phase=DRIVE              remain= 0.0 speed= 34.7 cruise=off rx271=disabled         mag=200 raw=812679 selected=127891 loop= 50.0ms
+ 155.1s phase=DRIVE              remain= 0.0 speed= 34.7 cruise=on rx271=ready_no_brake   mag=200 raw=844341 selected=130366 loop=1107.0ms
+ 157.1s phase=DRIVE              remain= 0.0 speed= 34.9 cruise=on rx271=ready_no_brake   mag=200 raw=854422 selected=131877 loop= 50.0ms
+ 159.1s phase=DRIVE              remain= 0.0 speed= 33.9 cruise=on rx271=active_brake     mag=1219 raw=865654 selected=133565 loop= 57.6ms
+ 161.2s phase=DRIVE              remain= 0.0 speed= 34.1 cruise=on rx271=ready_no_brake   mag=200 raw=876947 selected=135261 loop= 44.9ms
+ 163.2s phase=DRIVE              remain= 0.0 speed= 34.8 cruise=on rx271=ready_no_brake   mag=200 raw=888381 selected=136981 loop= 58.1ms
+ 165.3s phase=DRIVE              remain= 0.0 speed= 34.8 cruise=on rx271=ready_no_brake   mag=200 raw=897234 selected=138701 loop= 50.0ms
+ 167.3s phase=DRIVE              remain= 0.0 speed= 35.0 cruise=on rx271=active_brake     mag=1219 raw=897234 selected=140412 loop= 50.0ms
+ 170.2s phase=DRIVE              remain= 0.0 speed= 34.0 cruise=on rx271=ready_no_brake   mag=200 raw=928615 selected=143023 loop=1137.2ms
+ 172.2s phase=DRIVE              remain= 0.0 speed= 31.3 cruise=on rx271=active_brake     mag=1219 raw=938561 selected=144517 loop= 64.7ms
+ 174.2s phase=DRIVE              remain= 0.0 speed= 26.4 cruise=on rx271=active_brake     mag=1183 raw=949906 selected=146220 loop= 55.4ms
+ 176.3s phase=DRIVE              remain= 0.0 speed= 21.9 cruise=on rx271=active_brake     mag=1215 raw=961184 selected=147917 loop= 51.8ms
+ 178.3s phase=DRIVE              remain= 0.0 speed= 19.7 cruise=on rx271=active_brake     mag=1151 raw=972593 selected=149626 loop= 50.0ms
+ 180.3s phase=DRIVE              remain= 0.0 speed= 15.9 cruise=off rx271=disabled         mag=200 raw=981645 selected=151324 loop= 50.1ms
+ 182.3s phase=DRIVE              remain= 0.0 speed= 12.7 cruise=off rx271=disabled         mag=200 raw=981645 selected=153000 loop= 50.0ms
+ 185.4s phase=DRIVE              remain= 0.0 speed= 12.9 cruise=off rx271=disabled         mag=200 raw=1015313 selected=156045 loop=1542.8ms
+ 187.7s phase=DRIVE              remain= 0.0 speed= 14.4 cruise=off rx271=disabled         mag=200 raw=1026296 selected=157695 loop=871.2ms
+ 189.7s phase=DRIVE              remain= 0.0 speed= 18.1 cruise=off rx271=disabled         mag=200 raw=1036609 selected=159245 loop= 50.1ms
+ 191.7s phase=DRIVE              remain= 0.0 speed= 22.0 cruise=off rx271=disabled         mag=200 raw=1047799 selected=160925 loop= 50.1ms
+ 193.8s phase=DRIVE              remain= 0.0 speed= 21.3 cruise=off rx271=disabled         mag=200 raw=1059094 selected=162623 loop= 50.1ms
+ 195.8s phase=DRIVE              remain= 0.0 speed= 20.3 cruise=off rx271=disabled         mag=200 raw=1070433 selected=164327 loop= 50.1ms
+ 197.8s phase=DRIVE              remain= 0.0 speed= 18.9 cruise=off rx271=disabled         mag=200 raw=1071297 selected=166005 loop= 50.2ms
+ 199.8s phase=DRIVE              remain= 0.0 speed= 18.3 cruise=off rx271=disabled         mag=200 raw=1071297 selected=167723 loop= 50.0ms
+ 201.9s phase=DRIVE              remain= 0.0 speed= 18.4 cruise=off rx271=disabled         mag=200 raw=1071297 selected=169452 loop= 50.0ms
+ 203.9s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=1071297 selected=171125 loop= 50.0ms
+ 205.9s phase=DRIVE              remain= 0.0 speed= 22.2 cruise=off rx271=disabled         mag=200 raw=1071297 selected=172843 loop= 50.0ms
+ 209.8s phase=DRIVE              remain= 0.0 speed= 26.0 cruise=on rx271=ready_no_brake   mag=200 raw=1122683 selected=176692 loop=2359.3ms
+ 212.0s phase=DRIVE              remain= 0.0 speed= 27.5 cruise=on rx271=ready_no_brake   mag=200 raw=1133915 selected=178376 loop=2273.5ms
+ 214.5s phase=DRIVE              remain= 0.0 speed= 27.4 cruise=off rx271=disabled         mag=200 raw=1145924 selected=180179 loop=972.8ms
+ 216.5s phase=DRIVE              remain= 0.0 speed= 24.9 cruise=off rx271=disabled         mag=200 raw=1156217 selected=181722 loop= 50.0ms
+ 218.6s phase=DRIVE              remain= 0.0 speed= 26.4 cruise=off rx271=disabled         mag=200 raw=1167571 selected=183424 loop= 50.1ms
+ 220.6s phase=DRIVE              remain= 0.0 speed= 24.5 cruise=on rx271=active_brake     mag=1192 raw=1172431 selected=185130 loop= 50.0ms
+ 222.6s phase=DRIVE              remain= 0.0 speed= 20.1 cruise=on rx271=active_brake     mag=1181 raw=1172431 selected=186805 loop= 50.0ms
+ 224.6s phase=DRIVE              remain= 0.0 speed= 15.9 cruise=on rx271=active_brake     mag=1399 raw=1172431 selected=188520 loop= 50.2ms
+ 226.7s phase=DRIVE              remain= 0.0 speed= 12.4 cruise=on rx271=active_brake     mag=1155 raw=1172431 selected=190248 loop= 50.0ms
+ 228.7s phase=DRIVE              remain= 0.0 speed= 10.3 cruise=on rx271=active_brake     mag=1172 raw=1172431 selected=191972 loop= 50.0ms
+ 232.9s phase=DRIVE              remain= 0.0 speed= 10.3 cruise=on rx271=ready_no_brake   mag=200 raw=1223077 selected=196077 loop=2297.2ms
+ 234.9s phase=DRIVE              remain= 0.0 speed= 11.5 cruise=on rx271=ready_no_brake   mag=200 raw=1232639 selected=197513 loop=2013.2ms
+ 237.3s phase=DRIVE              remain= 0.0 speed= 12.8 cruise=on rx271=ready_no_brake   mag=200 raw=1244047 selected=199222 loop=442.7ms
+ 239.3s phase=DRIVE              remain= 0.0 speed= 13.4 cruise=on rx271=ready_no_brake   mag=200 raw=1254841 selected=200839 loop= 50.0ms
+ 241.4s phase=DRIVE              remain= 0.0 speed= 13.7 cruise=on rx271=ready_no_brake   mag=200 raw=1266299 selected=202562 loop= 50.0ms
+ 243.4s phase=DRIVE              remain= 0.0 speed= 13.5 cruise=on rx271=ready_no_brake   mag=200 raw=1273549 selected=204238 loop= 50.0ms
+ 245.4s phase=DRIVE              remain= 0.0 speed= 14.1 cruise=on rx271=active_brake     mag=1219 raw=1273549 selected=205918 loop= 49.8ms
+ 248.7s phase=DRIVE              remain= 0.0 speed= 16.0 cruise=off rx271=disabled         mag=200 raw=1309963 selected=209118 loop=1659.2ms
+ 251.1s phase=DRIVE              remain= 0.0 speed= 17.4 cruise=off rx271=disabled         mag=200 raw=1321755 selected=210892 loop=936.2ms
+ 253.1s phase=DRIVE              remain= 0.0 speed= 19.3 cruise=off rx271=disabled         mag=200 raw=1332099 selected=212438 loop= 74.3ms
+ 255.1s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=1343286 selected=214118 loop= 50.0ms
+ 257.1s phase=DRIVE              remain= 0.0 speed= 18.8 cruise=off rx271=disabled         mag=200 raw=1354532 selected=215808 loop= 50.0ms
+ 259.2s phase=DRIVE              remain= 0.0 speed= 20.8 cruise=off rx271=disabled         mag=200 raw=1365263 selected=217495 loop= 50.1ms
+ 261.2s phase=DRIVE              remain= 0.0 speed= 22.8 cruise=off rx271=disabled         mag=200 raw=1365263 selected=219222 loop= 50.0ms
+ 263.2s phase=DRIVE              remain= 0.0 speed= 21.3 cruise=off rx271=disabled         mag=200 raw=1365263 selected=220900 loop= 50.0ms
+ 265.4s phase=DRIVE              remain= 0.0 speed= 20.3 cruise=on rx271=disabled         mag=200 raw=1403979 selected=223234 loop=1796.3ms
+ 268.2s phase=DRIVE              remain= 0.0 speed= 20.5 cruise=off rx271=disabled         mag=200 raw=1417589 selected=225277 loop=1097.2ms
+ 270.3s phase=DRIVE              remain= 0.0 speed= 22.0 cruise=off rx271=disabled         mag=200 raw=1428036 selected=226844 loop=167.0ms
+ 272.3s phase=DRIVE              remain= 0.0 speed= 22.4 cruise=off rx271=disabled         mag=200 raw=1439375 selected=228545 loop= 59.9ms
+ 274.3s phase=DRIVE              remain= 0.0 speed= 20.5 cruise=off rx271=disabled         mag=200 raw=1450729 selected=230254 loop= 50.0ms
+ 276.3s phase=DRIVE              remain= 0.0 speed= 17.6 cruise=off rx271=disabled         mag=200 raw=1457988 selected=231936 loop= 50.0ms
+ 278.3s phase=DRIVE              remain= 0.0 speed= 15.4 cruise=off rx271=disabled         mag=200 raw=1457988 selected=233614 loop= 51.6ms
+ 280.7s phase=DRIVE              remain= 0.0 speed= 14.2 cruise=off rx271=disabled         mag=200 raw=1489035 selected=236004 loop=1398.5ms
+ 282.8s phase=DRIVE              remain= 0.0 speed= 14.0 cruise=off rx271=disabled         mag=200 raw=1498460 selected=237417 loop=727.4ms
+ 284.8s phase=DRIVE              remain= 0.0 speed= 13.5 cruise=off rx271=disabled         mag=200 raw=1509183 selected=239028 loop= 50.0ms
+ 286.8s phase=DRIVE              remain= 0.0 speed= 13.2 cruise=off rx271=disabled         mag=200 raw=1520539 selected=240736 loop= 50.0ms
+ 288.9s phase=DRIVE              remain= 0.0 speed= 13.6 cruise=off rx271=disabled         mag=200 raw=1531830 selected=242430 loop= 50.0ms
+ 290.9s phase=DRIVE              remain= 0.0 speed= 15.5 cruise=off rx271=disabled         mag=200 raw=1542991 selected=244108 loop= 50.0ms
+ 292.9s phase=DRIVE              remain= 0.0 speed= 19.3 cruise=off rx271=disabled         mag=200 raw=1545809 selected=245826 loop= 50.1ms
+ 296.1s phase=DRIVE              remain= 0.0 speed= 20.8 cruise=off rx271=disabled         mag=200 raw=1575048 selected=248916 loop=1341.1ms
+ 298.2s phase=DRIVE              remain= 0.0 speed= 18.4 cruise=off rx271=disabled         mag=200 raw=1584836 selected=250387 loop=780.1ms
+ 300.2s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=1595242 selected=251949 loop= 50.0ms
+ 302.2s phase=DRIVE              remain= 0.0 speed= 25.1 cruise=off rx271=disabled         mag=200 raw=1606417 selected=253627 loop= 50.0ms
+ 304.2s phase=DRIVE              remain= 0.0 speed= 25.8 cruise=off rx271=disabled         mag=200 raw=1617882 selected=255347 loop= 50.0ms
+ 306.3s phase=DRIVE              remain= 0.0 speed= 23.2 cruise=off rx271=disabled         mag=200 raw=1629114 selected=257030 loop= 50.0ms
+ 308.3s phase=DRIVE              remain= 0.0 speed= 22.1 cruise=on rx271=ready_no_brake   mag=200 raw=1632231 selected=258717 loop= 53.4ms
+ 311.2s phase=DRIVE              remain= 0.0 speed= 23.3 cruise=on rx271=ready_no_brake   mag=200 raw=1658622 selected=261465 loop=1238.6ms
+ 313.4s phase=DRIVE              remain= 0.0 speed= 24.3 cruise=on rx271=ready_no_brake   mag=200 raw=1669797 selected=263142 loop=447.3ms
+ 315.5s phase=DRIVE              remain= 0.0 speed= 24.4 cruise=on rx271=ready_no_brake   mag=200 raw=1680645 selected=264772 loop= 56.1ms
+ 317.5s phase=DRIVE              remain= 0.0 speed= 21.2 cruise=on rx271=ready_no_brake   mag=200 raw=1692043 selected=266481 loop= 50.0ms
+ 319.5s phase=DRIVE              remain= 0.0 speed= 16.7 cruise=off rx271=disabled         mag=10184 raw=1703347 selected=268180 loop= 50.1ms
+ 321.5s phase=DRIVE              remain= 0.0 speed= 12.1 cruise=off rx271=disabled         mag=200 raw=1714529 selected=269858 loop= 50.1ms
+ 323.6s phase=DRIVE              remain= 0.0 speed=  9.0 cruise=off rx271=disabled         mag=200 raw=1716755 selected=271578 loop= 50.2ms
+ 325.6s phase=DRIVE              remain= 0.0 speed=  6.4 cruise=off rx271=disabled         mag=200 raw=1716755 selected=273268 loop= 53.3ms
+ 327.6s phase=DRIVE              remain= 0.0 speed=  4.8 cruise=off rx271=disabled         mag=200 raw=1716755 selected=274978 loop= 49.9ms
+ 329.9s phase=DRIVE              remain= 0.0 speed=  5.8 cruise=off rx271=disabled         mag=200 raw=1764835 selected=277415 loop=2179.4ms
+ 333.0s phase=DRIVE              remain= 0.0 speed=  8.6 cruise=off rx271=disabled         mag=200 raw=1779721 selected=279645 loop=1174.7ms
+ 335.0s phase=DRIVE              remain= 0.0 speed=  9.4 cruise=off rx271=disabled         mag=200 raw=1789718 selected=281142 loop= 54.1ms
+ 337.0s phase=DRIVE              remain= 0.0 speed= 12.4 cruise=on rx271=ready_no_brake   mag=200 raw=1800962 selected=282832 loop= 50.0ms
+ 339.0s phase=DRIVE              remain= 0.0 speed= 11.0 cruise=on rx271=ready_no_brake   mag=200 raw=1812256 selected=284523 loop= 59.5ms
+ 341.0s phase=DRIVE              remain= 0.0 speed= 13.6 cruise=on rx271=ready_no_brake   mag=200 raw=1816195 selected=286212 loop= 50.1ms
+ 343.1s phase=DRIVE              remain= 0.0 speed= 14.0 cruise=on rx271=ready_no_brake   mag=200 raw=1816195 selected=287944 loop= 50.0ms
+ 347.0s phase=DRIVE              remain= 0.0 speed= 12.2 cruise=on rx271=active_brake     mag=1219 raw=1860203 selected=291735 loop=2010.3ms
+ 349.8s phase=DRIVE              remain= 0.0 speed= 10.0 cruise=on rx271=active_brake     mag=1215 raw=1873465 selected=293719 loop=1040.8ms
+ 351.8s phase=DRIVE              remain= 0.0 speed=  9.3 cruise=on rx271=ready_no_brake   mag=200 raw=1883674 selected=295256 loop= 50.5ms
+ 353.8s phase=DRIVE              remain= 0.0 speed=  7.4 cruise=off rx271=disabled         mag=200 raw=1895131 selected=296974 loop= 50.0ms
+ 355.9s phase=DRIVE              remain= 0.0 speed=  7.7 cruise=off rx271=disabled         mag=200 raw=1906428 selected=298667 loop= 50.2ms
+ 357.9s phase=DRIVE              remain= 0.0 speed=  9.4 cruise=off rx271=disabled         mag=200 raw=1912775 selected=300376 loop= 50.0ms
+ 359.9s phase=DRIVE              remain= 0.0 speed=  9.9 cruise=off rx271=disabled         mag=200 raw=1912775 selected=302102 loop= 50.1ms
+ 362.0s phase=DRIVE              remain= 0.0 speed= 13.8 cruise=off rx271=disabled         mag=200 raw=1912775 selected=303814 loop= 50.0ms
+ 364.0s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=1912775 selected=305536 loop= 50.0ms
+ 366.1s phase=DRIVE              remain= 0.0 speed= 19.0 cruise=off rx271=disabled         mag=200 raw=1912775 selected=307256 loop= 50.0ms
+ 369.1s phase=DRIVE              remain= 0.0 speed= 15.4 cruise=off rx271=disabled         mag=200 raw=1963943 selected=310399 loop=2350.7ms
+ 371.2s phase=DRIVE              remain= 0.0 speed=  8.2 cruise=off rx271=disabled         mag=200 raw=1974170 selected=311932 loop=2132.2ms
+ 373.4s phase=DRIVE              remain= 0.0 speed=  8.0 cruise=off rx271=disabled         mag=200 raw=1984573 selected=313491 loop=820.0ms
+ 375.4s phase=DRIVE              remain= 0.0 speed= 11.5 cruise=off rx271=disabled         mag=200 raw=1994911 selected=315041 loop= 51.2ms
+ 377.4s phase=DRIVE              remain= 0.0 speed= 15.6 cruise=off rx271=disabled         mag=200 raw=2006266 selected=316748 loop= 55.0ms
+ 379.4s phase=DRIVE              remain= 0.0 speed= 20.0 cruise=off rx271=disabled         mag=200 raw=2013966 selected=318454 loop= 50.0ms
+ 381.5s phase=DRIVE              remain= 0.0 speed= 17.1 cruise=off rx271=disabled         mag=200 raw=2013966 selected=320172 loop= 50.0ms
+ 383.8s phase=DRIVE              remain= 0.0 speed= 13.6 cruise=off rx271=disabled         mag=200 raw=2044564 selected=322500 loop=1394.8ms
+ 386.3s phase=DRIVE              remain= 0.0 speed= 12.1 cruise=off rx271=disabled         mag=200 raw=2056289 selected=324261 loop=461.6ms
+ 388.3s phase=DRIVE              remain= 0.0 speed= 11.0 cruise=off rx271=disabled         mag=200 raw=2067298 selected=325910 loop= 50.0ms
+ 390.4s phase=DRIVE              remain= 0.0 speed= 13.0 cruise=off rx271=disabled         mag=200 raw=2078599 selected=327608 loop= 50.9ms
+ 392.4s phase=DRIVE              remain= 0.0 speed= 15.2 cruise=off rx271=disabled         mag=200 raw=2089935 selected=329308 loop= 50.0ms
+ 394.4s phase=DRIVE              remain= 0.0 speed= 16.1 cruise=off rx271=disabled         mag=200 raw=2101170 selected=330998 loop= 50.0ms
+ 396.4s phase=DRIVE              remain= 0.0 speed= 17.5 cruise=off rx271=disabled         mag=200 raw=2101731 selected=332680 loop= 50.5ms
+ 398.9s phase=DRIVE              remain= 0.0 speed= 16.8 cruise=off rx271=disabled         mag=200 raw=2128582 selected=335113 loop=1230.9ms
+ 401.0s phase=DRIVE              remain= 0.0 speed= 14.6 cruise=off rx271=disabled         mag=200 raw=2138709 selected=336630 loop=384.2ms
+ 403.0s phase=DRIVE              remain= 0.0 speed= 13.6 cruise=off rx271=disabled         mag=200 raw=2149614 selected=338268 loop= 50.1ms
+ 405.0s phase=DRIVE              remain= 0.0 speed= 13.1 cruise=off rx271=disabled         mag=200 raw=2160801 selected=339946 loop= 50.0ms
+ 407.0s phase=DRIVE              remain= 0.0 speed= 12.3 cruise=off rx271=disabled         mag=200 raw=2171985 selected=341624 loop= 50.0ms
+ 409.1s phase=DRIVE              remain= 0.0 speed= 12.8 cruise=off rx271=disabled         mag=200 raw=2183357 selected=343334 loop= 50.0ms
+ 411.1s phase=DRIVE              remain= 0.0 speed= 15.5 cruise=off rx271=disabled         mag=200 raw=2186688 selected=345058 loop= 50.0ms
+ 413.1s phase=DRIVE              remain= 0.0 speed= 18.4 cruise=off rx271=disabled         mag=200 raw=2186688 selected=346743 loop= 50.9ms
+ 416.7s phase=DRIVE              remain= 0.0 speed= 14.0 cruise=off rx271=disabled         mag=200 raw=2229329 selected=350246 loop=1939.0ms
+ 419.6s phase=DRIVE              remain= 0.0 speed= 18.6 cruise=off rx271=disabled         mag=200 raw=2243324 selected=352348 loop=1120.6ms
+ 421.7s phase=DRIVE              remain= 0.0 speed= 25.7 cruise=off rx271=disabled         mag=200 raw=2253731 selected=353913 loop=166.2ms
+ 423.7s phase=DRIVE              remain= 0.0 speed= 24.0 cruise=on rx271=ready_no_brake   mag=200 raw=2264853 selected=355576 loop= 50.4ms
+ 425.7s phase=DRIVE              remain= 0.0 speed= 25.1 cruise=on rx271=ready_no_brake   mag=200 raw=2276150 selected=357278 loop= 50.1ms
+ 427.7s phase=DRIVE              remain= 0.0 speed= 26.3 cruise=on rx271=ready_no_brake   mag=200 raw=2282362 selected=358961 loop= 45.0ms
+ 429.8s phase=DRIVE              remain= 0.0 speed= 26.6 cruise=on rx271=active_brake     mag=1219 raw=2282362 selected=360689 loop= 50.1ms
+ 431.8s phase=DRIVE              remain= 0.0 speed= 26.3 cruise=on rx271=active_brake     mag=1219 raw=2282362 selected=362369 loop= 54.4ms
+ 435.3s phase=DRIVE              remain= 0.0 speed= 27.5 cruise=on rx271=ready_no_brake   mag=200 raw=2334001 selected=366004 loop=2406.4ms
+ 437.5s phase=DRIVE              remain= 0.0 speed= 26.7 cruise=on rx271=ready_no_brake   mag=200 raw=2344656 selected=367601 loop=2212.2ms
+ 439.8s phase=DRIVE              remain= 0.0 speed= 25.2 cruise=on rx271=active_brake     mag=1219 raw=2355964 selected=369297 loop=886.7ms
+ 441.8s phase=DRIVE              remain= 0.0 speed= 22.1 cruise=on rx271=ready_no_brake   mag=200 raw=2365999 selected=370803 loop= 52.2ms
+ 443.8s phase=DRIVE              remain= 0.0 speed= 21.0 cruise=on rx271=active_brake     mag=1215 raw=2377354 selected=372510 loop= 50.0ms
+ 445.9s phase=DRIVE              remain= 0.0 speed= 20.0 cruise=on rx271=ready_no_brake   mag=200 raw=2383387 selected=374220 loop= 50.1ms
+ 447.9s phase=DRIVE              remain= 0.0 speed= 19.1 cruise=on rx271=ready_no_brake   mag=200 raw=2400222 selected=375944 loop= 50.0ms
+ 450.2s phase=DRIVE              remain= 0.0 speed= 15.9 cruise=on rx271=ready_no_brake   mag=200 raw=2413973 selected=378009 loop=1049.9ms
+ 452.2s phase=DRIVE              remain= 0.0 speed= 12.5 cruise=on rx271=active_brake     mag=1188 raw=2423980 selected=379508 loop= 50.0ms
+ 454.2s phase=DRIVE              remain= 0.0 speed= 10.5 cruise=on rx271=active_brake     mag=1215 raw=2435223 selected=381197 loop= 50.0ms
+ 456.2s phase=DRIVE              remain= 0.0 speed=  9.0 cruise=on rx271=active_brake     mag=1215 raw=2446412 selected=382876 loop= 50.0ms
+ 458.2s phase=DRIVE              remain= 0.0 speed=  8.1 cruise=on rx271=active_brake     mag=1215 raw=2457647 selected=384560 loop= 50.0ms
+ 460.2s phase=DRIVE              remain= 0.0 speed=  6.9 cruise=on rx271=active_brake     mag=1181 raw=2467518 selected=386266 loop= 50.0ms
+ 462.2s phase=DRIVE              remain= 0.0 speed=  5.7 cruise=on rx271=active_brake     mag=1188 raw=2467518 selected=387944 loop= 50.0ms
+ 465.6s phase=DRIVE              remain= 0.0 speed= 11.6 cruise=off rx271=disabled         mag=200 raw=2501312 selected=391121 loop=1528.7ms
+ 467.8s phase=DRIVE              remain= 0.0 speed=  8.9 cruise=off rx271=disabled         mag=200 raw=2512038 selected=392730 loop=856.4ms
+ 469.8s phase=DRIVE              remain= 0.0 speed=  9.9 cruise=off rx271=disabled         mag=200 raw=2522346 selected=394280 loop= 50.0ms
+ 471.8s phase=DRIVE              remain= 0.0 speed= 11.5 cruise=off rx271=disabled         mag=200 raw=2533804 selected=396000 loop= 49.9ms
+ 473.8s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=2545019 selected=397688 loop= 57.3ms
+ 475.9s phase=DRIVE              remain= 0.0 speed= 17.7 cruise=off rx271=disabled         mag=200 raw=2556298 selected=399379 loop= 50.1ms
+ 477.9s phase=DRIVE              remain= 0.0 speed= 18.7 cruise=off rx271=disabled         mag=200 raw=2557424 selected=401060 loop= 48.3ms
+ 479.9s phase=DRIVE              remain= 0.0 speed= 19.8 cruise=off rx271=disabled         mag=200 raw=2557424 selected=402737 loop= 47.8ms
+ 481.9s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=2557424 selected=404422 loop= 50.0ms
+ 485.1s phase=DRIVE              remain= 0.0 speed= 19.7 cruise=on rx271=ready_no_brake   mag=200 raw=2608860 selected=407779 loop=2373.8ms
+ 487.4s phase=DRIVE              remain= 0.0 speed= 20.0 cruise=on rx271=active_brake     mag=1404 raw=2620156 selected=409474 loop=2287.8ms
+ 489.9s phase=DRIVE              remain= 0.0 speed= 15.3 cruise=on rx271=active_brake     mag=1152 raw=2632467 selected=411318 loop=981.0ms
+ 491.9s phase=DRIVE              remain= 0.0 speed= 12.0 cruise=on rx271=active_brake     mag=1215 raw=2642733 selected=412858 loop= 71.8ms
+ 494.0s phase=DRIVE              remain= 0.0 speed=  9.9 cruise=on rx271=active_brake     mag=1215 raw=2654078 selected=414565 loop= 50.0ms
+ 496.0s phase=DRIVE              remain= 0.0 speed=  8.6 cruise=off rx271=disabled         mag=200 raw=2658539 selected=416287 loop= 50.0ms
+ 498.0s phase=DRIVE              remain= 0.0 speed=  8.9 cruise=off rx271=disabled         mag=200 raw=2658539 selected=417963 loop= 50.2ms
+ 500.3s phase=DRIVE              remain= 0.0 speed= 15.9 cruise=off rx271=disabled         mag=200 raw=2691812 selected=420236 loop=1496.4ms
+ 502.5s phase=DRIVE              remain= 0.0 speed= 19.9 cruise=off rx271=disabled         mag=200 raw=2702706 selected=421867 loop=873.6ms
+ 504.5s phase=DRIVE              remain= 0.0 speed= 20.8 cruise=off rx271=disabled         mag=200 raw=2712941 selected=423400 loop= 50.0ms
+ 506.5s phase=DRIVE              remain= 0.0 speed= 20.0 cruise=off rx271=disabled         mag=200 raw=2724134 selected=425080 loop= 50.2ms
+ 508.5s phase=DRIVE              remain= 0.0 speed= 16.1 cruise=off rx271=disabled         mag=200 raw=2735526 selected=426791 loop= 50.0ms
+ 510.5s phase=DRIVE              remain= 0.0 speed= 13.0 cruise=off rx271=disabled         mag=200 raw=2746701 selected=428468 loop= 50.1ms
+ 512.5s phase=DRIVE              remain= 0.0 speed= 13.4 cruise=off rx271=disabled         mag=200 raw=2748145 selected=430158 loop= 49.7ms
+ 514.6s phase=DRIVE              remain= 0.0 speed= 19.6 cruise=off rx271=disabled         mag=200 raw=2748145 selected=431878 loop= 50.0ms
+ 516.6s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=2748145 selected=433558 loop= 50.6ms
+ 519.4s phase=DRIVE              remain= 0.0 speed= 17.4 cruise=off rx271=disabled         mag=200 raw=2799215 selected=436554 loop=2351.6ms
+ 521.5s phase=DRIVE              remain= 0.0 speed= 13.8 cruise=off rx271=disabled         mag=200 raw=2809600 selected=438112 loop=2115.0ms
+ 523.8s phase=DRIVE              remain= 0.0 speed= 12.5 cruise=off rx271=disabled         mag=200 raw=2820438 selected=439739 loop=864.2ms
+ 525.8s phase=DRIVE              remain= 0.0 speed= 16.2 cruise=off rx271=disabled         mag=200 raw=2830782 selected=441292 loop= 50.0ms
+ 527.8s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=2842190 selected=442998 loop= 51.5ms
+ 529.8s phase=DRIVE              remain= 0.0 speed= 24.2 cruise=off rx271=disabled         mag=200 raw=2849247 selected=444690 loop= 50.0ms
+ 531.8s phase=DRIVE              remain= 0.0 speed= 25.9 cruise=off rx271=disabled         mag=200 raw=2849247 selected=446368 loop= 50.0ms
+ 533.8s phase=DRIVE              remain= 0.0 speed= 25.7 cruise=off rx271=disabled         mag=200 raw=2849247 selected=448044 loop= 51.1ms
+ 535.9s phase=DRIVE              remain= 0.0 speed= 23.4 cruise=off rx271=disabled         mag=200 raw=2849247 selected=449768 loop= 50.0ms
+ 537.9s phase=DRIVE              remain= 0.0 speed= 23.9 cruise=off rx271=disabled         mag=200 raw=2849247 selected=451447 loop= 50.1ms
+ 541.3s phase=DRIVE              remain= 0.0 speed= 20.3 cruise=off rx271=disabled         mag=200 raw=2900746 selected=454936 loop=2358.8ms
+ 543.5s phase=DRIVE              remain= 0.0 speed= 10.0 cruise=off rx271=disabled         mag=200 raw=2911517 selected=456546 loop=2240.9ms
+ 545.9s phase=DRIVE              remain= 0.0 speed= 15.8 cruise=off rx271=disabled         mag=200 raw=2923149 selected=458293 loop=929.1ms
+ 547.9s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=2933435 selected=459838 loop= 52.1ms
+ 549.9s phase=DRIVE              remain= 0.0 speed= 12.2 cruise=off rx271=disabled         mag=200 raw=2944720 selected=461531 loop= 51.6ms
+ 551.9s phase=DRIVE              remain= 0.0 speed= 12.6 cruise=off rx271=disabled         mag=200 raw=2950407 selected=463226 loop= 50.1ms
+ 553.9s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=2950407 selected=464904 loop= 51.2ms
+ 556.5s phase=DRIVE              remain= 0.0 speed= 22.4 cruise=off rx271=disabled         mag=200 raw=2984232 selected=467470 loop=1558.5ms
+ 558.8s phase=DRIVE              remain= 0.0 speed= 25.5 cruise=off rx271=disabled         mag=200 raw=2995251 selected=469122 loop=884.4ms
+ 560.8s phase=DRIVE              remain= 0.0 speed= 26.1 cruise=off rx271=disabled         mag=200 raw=3005586 selected=470671 loop= 50.0ms
+ 562.8s phase=DRIVE              remain= 0.0 speed= 25.1 cruise=off rx271=disabled         mag=200 raw=3016998 selected=472386 loop= 50.0ms
+ 564.9s phase=DRIVE              remain= 0.0 speed= 25.5 cruise=off rx271=disabled         mag=200 raw=3028234 selected=474073 loop= 51.1ms
+ 566.9s phase=DRIVE              remain= 0.0 speed= 26.6 cruise=off rx271=disabled         mag=200 raw=3039630 selected=475786 loop= 50.1ms
+ 568.9s phase=DRIVE              remain= 0.0 speed= 26.5 cruise=off rx271=disabled         mag=200 raw=3039917 selected=477452 loop= 50.0ms
+ 570.9s phase=DRIVE              remain= 0.0 speed= 27.2 cruise=off rx271=disabled         mag=200 raw=3039917 selected=479130 loop= 50.0ms
+ 572.9s phase=DRIVE              remain= 0.0 speed= 28.8 cruise=off rx271=disabled         mag=200 raw=3039917 selected=480810 loop= 50.1ms
+ 574.9s phase=DRIVE              remain= 0.0 speed= 30.2 cruise=off rx271=disabled         mag=200 raw=3039917 selected=482541 loop= 50.0ms
+ 576.9s phase=DRIVE              remain= 0.0 speed= 32.3 cruise=off rx271=disabled         mag=200 raw=3039917 selected=484229 loop= 50.1ms
+ 578.9s phase=DRIVE              remain= 0.0 speed= 35.1 cruise=off rx271=disabled         mag=200 raw=3039917 selected=485905 loop= 50.0ms
+ 581.0s phase=DRIVE              remain= 0.0 speed= 38.6 cruise=on rx271=ready_no_brake   mag=200 raw=3073809 selected=487620 loop= 50.0ms
+ 583.4s phase=DRIVE              remain= 0.0 speed= 36.5 cruise=on rx271=ready_no_brake   mag=200 raw=3091652 selected=490296 loop=2411.9ms
+ 585.7s phase=DRIVE              remain= 0.0 speed= 35.1 cruise=on rx271=ready_no_brake   mag=200 raw=3102999 selected=492003 loop=2310.5ms
+ 588.1s phase=DRIVE              remain= 0.0 speed= 34.2 cruise=on rx271=ready_no_brake   mag=200 raw=3114792 selected=493774 loop=925.0ms
+ 590.1s phase=DRIVE              remain= 0.0 speed= 31.0 cruise=on rx271=ready_no_brake   mag=1224 raw=3124960 selected=495296 loop= 50.1ms
+ 592.2s phase=DRIVE              remain= 0.0 speed= 29.9 cruise=on rx271=active_brake     mag=1219 raw=3136346 selected=497002 loop= 50.0ms
+ 594.2s phase=DRIVE              remain= 0.0 speed= 30.1 cruise=on rx271=ready_no_brake   mag=200 raw=3141030 selected=498719 loop= 50.0ms
+ 596.2s phase=DRIVE              remain= 0.0 speed= 30.0 cruise=on rx271=ready_no_brake   mag=200 raw=3141030 selected=500397 loop= 50.0ms
+ 599.5s phase=DRIVE              remain= 0.0 speed= 28.1 cruise=on rx271=ready_no_brake   mag=200 raw=3178891 selected=503397 loop=1346.4ms
+ 601.6s phase=DRIVE              remain= 0.0 speed= 27.9 cruise=on rx271=active_brake     mag=1219 raw=3188827 selected=504885 loop=140.2ms
+ 603.6s phase=DRIVE              remain= 0.0 speed= 27.0 cruise=on rx271=active_brake     mag=1219 raw=3199954 selected=506559 loop= 50.2ms
+ 605.6s phase=DRIVE              remain= 0.0 speed= 26.7 cruise=on rx271=ready_no_brake   mag=200 raw=3211366 selected=508272 loop= 50.9ms
+ 607.6s phase=DRIVE              remain= 0.0 speed= 27.3 cruise=on rx271=ready_no_brake   mag=200 raw=3222643 selected=509966 loop= 54.7ms
+ 609.6s phase=DRIVE              remain= 0.0 speed= 24.7 cruise=on rx271=ready_no_brake   mag=200 raw=3228930 selected=511670 loop= 49.1ms
+ 611.7s phase=DRIVE              remain= 0.0 speed= 21.0 cruise=on rx271=ready_no_brake   mag=1224 raw=3228930 selected=513384 loop= 50.0ms
+ 614.0s phase=DRIVE              remain= 0.0 speed= 21.9 cruise=on rx271=ready_no_brake   mag=200 raw=3260899 selected=515709 loop=1461.5ms
+ 616.3s phase=DRIVE              remain= 0.0 speed= 22.7 cruise=on rx271=ready_no_brake   mag=200 raw=3272077 selected=517385 loop=898.6ms
+ 618.3s phase=DRIVE              remain= 0.0 speed= 23.6 cruise=on rx271=active_brake     mag=1219 raw=3282430 selected=518939 loop= 52.2ms
+ 620.3s phase=DRIVE              remain= 0.0 speed= 22.9 cruise=on rx271=active_brake     mag=1219 raw=3293722 selected=520630 loop= 58.0ms
+ 622.3s phase=DRIVE              remain= 0.0 speed= 22.0 cruise=on rx271=ready_no_brake   mag=200 raw=3304956 selected=522324 loop= 50.0ms
+ 624.4s phase=DRIVE              remain= 0.0 speed= 18.0 cruise=on rx271=ready_no_brake   mag=200 raw=3316252 selected=524017 loop= 50.2ms
+ 626.4s phase=DRIVE              remain= 0.0 speed= 14.0 cruise=on rx271=ready_no_brake   mag=200 raw=3317355 selected=525695 loop= 50.5ms
+ 628.4s phase=DRIVE              remain= 0.0 speed= 10.9 cruise=on rx271=active_brake     mag=1215 raw=3317355 selected=527413 loop= 50.0ms
+ 630.4s phase=DRIVE              remain= 0.0 speed=  9.2 cruise=on rx271=active_brake     mag=1215 raw=3317355 selected=529091 loop= 50.0ms
+ 633.8s phase=DRIVE              remain= 0.0 speed= 14.6 cruise=on rx271=ready_no_brake   mag=200 raw=3367888 selected=532492 loop=2292.9ms
+ 635.8s phase=DRIVE              remain= 0.0 speed= 18.3 cruise=on rx271=ready_no_brake   mag=200 raw=3377703 selected=533964 loop=2032.2ms
+ 638.0s phase=DRIVE              remain= 0.0 speed= 21.9 cruise=on rx271=ready_no_brake   mag=200 raw=3388380 selected=535561 loop=864.2ms
+ 640.0s phase=DRIVE              remain= 0.0 speed= 25.6 cruise=on rx271=ready_no_brake   mag=200 raw=3398750 selected=537120 loop= 53.8ms
+ 642.0s phase=DRIVE              remain= 0.0 speed= 28.3 cruise=on rx271=ready_no_brake   mag=200 raw=3410157 selected=538835 loop= 50.0ms
+ 644.1s phase=DRIVE              remain= 0.0 speed= 29.7 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=540555 loop= 50.0ms
+ 646.1s phase=DRIVE              remain= 0.0 speed= 29.9 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=542233 loop= 50.0ms
+ 648.1s phase=DRIVE              remain= 0.0 speed= 29.6 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=543913 loop= 50.1ms
+ 650.1s phase=DRIVE              remain= 0.0 speed= 27.6 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=545635 loop= 50.0ms
+ 652.2s phase=DRIVE              remain= 0.0 speed= 26.7 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=547360 loop= 50.0ms
+ 654.2s phase=DRIVE              remain= 0.0 speed= 25.3 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=549038 loop= 50.0ms
+ 656.2s phase=DRIVE              remain= 0.0 speed= 23.7 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=550755 loop= 50.0ms
+ 658.2s phase=DRIVE              remain= 0.0 speed= 22.2 cruise=on rx271=ready_no_brake   mag=200 raw=3418258 selected=552433 loop= 50.0ms
+ 660.9s phase=DRIVE              remain= 0.0 speed= 17.1 cruise=on rx271=active_brake     mag=1180 raw=3469526 selected=555339 loop=2371.2ms
+ 663.1s phase=DRIVE              remain= 0.0 speed= 13.5 cruise=on rx271=active_brake     mag=1206 raw=3479576 selected=556850 loop=2108.8ms
+ 665.5s phase=DRIVE              remain= 0.0 speed= 10.7 cruise=on rx271=ready_no_brake   mag=1224 raw=3491295 selected=558608 loop=457.2ms
+ 667.5s phase=DRIVE              remain= 0.0 speed= 11.0 cruise=on rx271=ready_no_brake   mag=200 raw=3502094 selected=560231 loop= 50.0ms
+ 669.5s phase=DRIVE              remain= 0.0 speed= 11.3 cruise=on rx271=ready_no_brake   mag=200 raw=3513390 selected=561922 loop= 50.0ms
+ 671.5s phase=DRIVE              remain= 0.0 speed= 11.8 cruise=on rx271=ready_no_brake   mag=200 raw=3519235 selected=563602 loop= 50.1ms
+ 673.6s phase=DRIVE              remain= 0.0 speed= 12.0 cruise=on rx271=ready_no_brake   mag=200 raw=3519235 selected=565320 loop= 50.3ms
+ 675.6s phase=DRIVE              remain= 0.0 speed= 11.9 cruise=on rx271=ready_no_brake   mag=200 raw=3519235 selected=567042 loop= 50.0ms
+ 677.6s phase=DRIVE              remain= 0.0 speed= 11.7 cruise=on rx271=ready_no_brake   mag=200 raw=3519235 selected=568720 loop= 50.0ms
+ 679.6s phase=DRIVE              remain= 0.0 speed= 11.8 cruise=on rx271=ready_no_brake   mag=200 raw=3519235 selected=570397 loop= 50.0ms
+ 683.2s phase=DRIVE              remain= 0.0 speed= 15.6 cruise=off rx271=disabled         mag=200 raw=3569833 selected=573965 loop=2283.3ms
+ 685.2s phase=DRIVE              remain= 0.0 speed= 18.4 cruise=off rx271=disabled         mag=200 raw=3579887 selected=575474 loop=2068.4ms
+ 687.4s phase=DRIVE              remain= 0.0 speed= 18.3 cruise=off rx271=disabled         mag=200 raw=3590544 selected=577075 loop=845.8ms
+ 689.4s phase=DRIVE              remain= 0.0 speed= 18.2 cruise=off rx271=disabled         mag=200 raw=3600848 selected=578621 loop= 50.1ms
+ 691.4s phase=DRIVE              remain= 0.0 speed= 16.5 cruise=off rx271=disabled         mag=200 raw=3612139 selected=580314 loop= 49.9ms
+ 693.5s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=3620236 selected=582006 loop= 50.0ms
+ 695.5s phase=DRIVE              remain= 0.0 speed= 16.1 cruise=off rx271=disabled         mag=200 raw=3620236 selected=583724 loop= 50.0ms
+ 697.5s phase=DRIVE              remain= 0.0 speed= 16.2 cruise=off rx271=disabled         mag=200 raw=3620236 selected=585402 loop= 50.0ms
+ 699.5s phase=DRIVE              remain= 0.0 speed= 17.6 cruise=off rx271=disabled         mag=200 raw=3620236 selected=587082 loop= 50.0ms
+ 702.4s phase=DRIVE              remain= 0.0 speed= 15.9 cruise=off rx271=disabled         mag=200 raw=3670954 selected=590073 loop=2295.7ms
+ 704.4s phase=DRIVE              remain= 0.0 speed= 12.5 cruise=off rx271=disabled         mag=200 raw=3681123 selected=591596 loop=2099.0ms
+ 706.6s phase=DRIVE              remain= 0.0 speed=  7.3 cruise=off rx271=disabled         mag=200 raw=3691867 selected=593209 loop=859.6ms
+ 708.6s phase=DRIVE              remain= 0.0 speed=  6.8 cruise=off rx271=disabled         mag=200 raw=3702080 selected=594738 loop= 50.0ms
+ 710.7s phase=DRIVE              remain= 0.0 speed=  7.7 cruise=off rx271=disabled         mag=200 raw=3713380 selected=596440 loop= 49.8ms
+ 712.7s phase=DRIVE              remain= 0.0 speed=  9.2 cruise=off rx271=disabled         mag=200 raw=3721307 selected=598137 loop= 50.0ms
+ 714.7s phase=DRIVE              remain= 0.0 speed= 10.1 cruise=off rx271=disabled         mag=200 raw=3721307 selected=599858 loop= 50.0ms
+ 717.7s phase=DRIVE              remain= 0.0 speed= 11.3 cruise=off rx271=disabled         mag=200 raw=3754237 selected=602574 loop=1102.1ms
+ 719.8s phase=DRIVE              remain= 0.0 speed= 12.3 cruise=off rx271=disabled         mag=200 raw=3764402 selected=604096 loop= 50.0ms
+ 721.8s phase=DRIVE              remain= 0.0 speed= 16.1 cruise=off rx271=disabled         mag=200 raw=3775828 selected=605812 loop= 50.0ms
+ 723.8s phase=DRIVE              remain= 0.0 speed= 16.7 cruise=off rx271=disabled         mag=200 raw=3787052 selected=607497 loop= 50.0ms
+ 725.8s phase=DRIVE              remain= 0.0 speed= 16.3 cruise=off rx271=disabled         mag=200 raw=3798279 selected=609182 loop= 50.0ms
+ 727.9s phase=DRIVE              remain= 0.0 speed= 18.8 cruise=off rx271=disabled         mag=200 raw=3806887 selected=610895 loop= 50.2ms
+ 729.9s phase=DRIVE              remain= 0.0 speed= 17.5 cruise=off rx271=disabled         mag=200 raw=3806887 selected=612574 loop= 51.8ms
+ 731.9s phase=DRIVE              remain= 0.0 speed= 15.4 cruise=off rx271=disabled         mag=200 raw=3806887 selected=614294 loop= 49.8ms
+ 735.0s phase=DRIVE              remain= 0.0 speed= 10.2 cruise=off rx271=disabled         mag=200 raw=3852956 selected=617399 loop=2094.8ms
+ 738.0s phase=DRIVE              remain= 0.0 speed=  6.4 cruise=off rx271=disabled         mag=200 raw=3867395 selected=619562 loop=1137.2ms
+ 740.0s phase=DRIVE              remain= 0.0 speed=  3.0 cruise=off rx271=disabled         mag=200 raw=3877333 selected=621050 loop= 50.1ms
+ 742.0s phase=DRIVE              remain= 0.0 speed=  2.6 cruise=off rx271=disabled         mag=200 raw=3888575 selected=622738 loop= 50.0ms
+ 744.0s phase=DRIVE              remain= 0.0 speed=  5.3 cruise=off rx271=disabled         mag=200 raw=3899865 selected=624435 loop= 50.0ms
+ 746.1s phase=DRIVE              remain= 0.0 speed=  8.1 cruise=off rx271=disabled         mag=200 raw=3904901 selected=626157 loop= 50.0ms
+ 748.1s phase=DRIVE              remain= 0.0 speed= 10.0 cruise=off rx271=disabled         mag=200 raw=3904901 selected=627879 loop= 50.0ms
+ 750.7s phase=DRIVE              remain= 0.0 speed= 10.6 cruise=off rx271=disabled         mag=200 raw=3940245 selected=630497 loop=1597.2ms
+ 753.1s phase=DRIVE              remain= 0.0 speed=  9.2 cruise=off rx271=disabled         mag=200 raw=3951867 selected=632242 loop=934.5ms
+ 755.2s phase=DRIVE              remain= 0.0 speed=  8.7 cruise=off rx271=disabled         mag=200 raw=3962318 selected=633808 loop= 50.8ms
+ 757.2s phase=DRIVE              remain= 0.0 speed=  7.4 cruise=off rx271=disabled         mag=200 raw=3973629 selected=635508 loop= 49.6ms
+ 759.2s phase=DRIVE              remain= 0.0 speed=  3.8 cruise=off rx271=disabled         mag=200 raw=3984913 selected=637200 loop= 50.0ms
+ 761.2s phase=DRIVE              remain= 0.0 speed=  5.0 cruise=off rx271=disabled         mag=200 raw=3995521 selected=638880 loop= 50.0ms
+ 763.3s phase=DRIVE              remain= 0.0 speed=  8.6 cruise=off rx271=disabled         mag=200 raw=3995521 selected=640598 loop= 50.0ms
+ 765.7s phase=DRIVE              remain= 0.0 speed= 13.7 cruise=off rx271=disabled         mag=200 raw=4023541 selected=643002 loop=1273.2ms
+ 768.0s phase=DRIVE              remain= 0.0 speed= 12.6 cruise=off rx271=disabled         mag=200 raw=4034366 selected=644627 loop=426.7ms
+ 770.0s phase=DRIVE              remain= 0.0 speed= 13.9 cruise=off rx271=disabled         mag=200 raw=4045273 selected=646263 loop= 50.1ms
+ 772.1s phase=DRIVE              remain= 0.0 speed= 14.7 cruise=off rx271=disabled         mag=200 raw=4056788 selected=647991 loop= 62.4ms
+ 774.1s phase=DRIVE              remain= 0.0 speed= 17.2 cruise=off rx271=disabled         mag=200 raw=4067965 selected=649671 loop= 50.0ms
+ 776.1s phase=DRIVE              remain= 0.0 speed= 19.0 cruise=off rx271=disabled         mag=200 raw=4079362 selected=651381 loop= 50.0ms
+ 778.2s phase=DRIVE              remain= 0.0 speed= 23.3 cruise=off rx271=disabled         mag=200 raw=4081482 selected=653086 loop= 43.6ms
+ 780.2s phase=DRIVE              remain= 0.0 speed= 24.2 cruise=off rx271=disabled         mag=200 raw=4081482 selected=654762 loop= 44.6ms
+ 782.2s phase=DRIVE              remain= 0.0 speed= 24.3 cruise=off rx271=disabled         mag=200 raw=4081482 selected=656496 loop= 50.0ms
+ 784.2s phase=DRIVE              remain= 0.0 speed= 24.1 cruise=off rx271=disabled         mag=200 raw=4081482 selected=658174 loop= 53.3ms
+ 786.3s phase=DRIVE              remain= 0.0 speed= 22.7 cruise=off rx271=disabled         mag=200 raw=4081482 selected=659898 loop= 50.3ms
+ 788.3s phase=DRIVE              remain= 0.0 speed= 22.1 cruise=off rx271=disabled         mag=200 raw=4081482 selected=661614 loop= 50.4ms
+ 790.4s phase=DRIVE              remain= 0.0 speed= 23.7 cruise=off rx271=disabled         mag=200 raw=4081482 selected=663338 loop= 50.7ms
+ 792.4s phase=DRIVE              remain= 0.0 speed= 27.2 cruise=off rx271=disabled         mag=200 raw=4081482 selected=665005 loop= 50.7ms
+ 795.7s phase=DRIVE              remain= 0.0 speed= 24.4 cruise=off rx271=disabled         mag=200 raw=4132902 selected=668483 loop=2389.4ms
+ 797.9s phase=DRIVE              remain= 0.0 speed= 22.4 cruise=off rx271=disabled         mag=200 raw=4143697 selected=670106 loop=2196.1ms
+ 800.3s phase=DRIVE              remain= 0.0 speed= 22.9 cruise=off rx271=disabled         mag=200 raw=4155144 selected=671819 loop=914.8ms
+ 802.3s phase=DRIVE              remain= 0.0 speed= 24.4 cruise=off rx271=disabled         mag=200 raw=4165459 selected=673366 loop= 50.1ms
+ 804.3s phase=DRIVE              remain= 0.0 speed= 23.1 cruise=off rx271=disabled         mag=200 raw=4176735 selected=675057 loop= 50.0ms
+ 806.4s phase=DRIVE              remain= 0.0 speed= 23.8 cruise=off rx271=disabled         mag=200 raw=4182497 selected=676771 loop= 50.0ms
+ 808.4s phase=DRIVE              remain= 0.0 speed= 24.8 cruise=off rx271=disabled         mag=200 raw=4182497 selected=678491 loop= 50.0ms
+ 811.1s phase=DRIVE              remain= 0.0 speed= 22.2 cruise=off rx271=disabled         mag=200 raw=4217627 selected=681202 loop=1649.1ms
+ 813.7s phase=DRIVE              remain= 0.0 speed= 18.1 cruise=off rx271=disabled         mag=200 raw=4230146 selected=683081 loop=1012.5ms
+ 815.7s phase=DRIVE              remain= 0.0 speed= 16.2 cruise=off rx271=disabled         mag=200 raw=4240317 selected=684612 loop= 61.2ms
+ 817.7s phase=DRIVE              remain= 0.0 speed= 16.7 cruise=off rx271=disabled         mag=200 raw=4251619 selected=686303 loop= 50.1ms
+ 819.8s phase=DRIVE              remain= 0.0 speed= 20.0 cruise=off rx271=disabled         mag=200 raw=4263084 selected=688028 loop= 53.3ms
+ 821.8s phase=DRIVE              remain= 0.0 speed= 22.8 cruise=off rx271=disabled         mag=200 raw=4272684 selected=689718 loop= 54.5ms
+ 823.9s phase=DRIVE              remain= 0.0 speed= 26.0 cruise=off rx271=disabled         mag=200 raw=4272684 selected=691440 loop= 50.3ms
+ 825.9s phase=DRIVE              remain= 0.0 speed= 26.9 cruise=off rx271=disabled         mag=200 raw=4272684 selected=693160 loop= 55.8ms
+ 828.4s phase=DRIVE              remain= 0.0 speed= 23.8 cruise=off rx271=disabled         mag=200 raw=4315081 selected=695836 loop=1989.5ms
+ 831.5s phase=DRIVE              remain= 0.0 speed= 31.9 cruise=off rx271=disabled         mag=200 raw=4330290 selected=698115 loop=1249.4ms
+ 833.6s phase=DRIVE              remain= 0.0 speed= 36.3 cruise=off rx271=disabled         mag=200 raw=4340399 selected=699636 loop=265.5ms
+ 835.6s phase=DRIVE              remain= 0.0 speed= 34.0 cruise=off rx271=disabled         mag=200 raw=4351463 selected=701290 loop= 50.1ms
+ 837.6s phase=DRIVE              remain= 0.0 speed= 32.8 cruise=off rx271=disabled         mag=200 raw=4362875 selected=703005 loop= 50.1ms
+ 839.6s phase=DRIVE              remain= 0.0 speed= 31.7 cruise=off rx271=disabled         mag=200 raw=4367613 selected=704685 loop= 49.8ms
+ 841.7s phase=DRIVE              remain= 0.0 speed= 32.7 cruise=off rx271=disabled         mag=200 raw=4367613 selected=706407 loop= 50.0ms
+ 843.7s phase=DRIVE              remain= 0.0 speed= 33.5 cruise=off rx271=disabled         mag=200 raw=4367613 selected=708085 loop= 50.0ms
+ 845.7s phase=DRIVE              remain= 0.0 speed= 33.8 cruise=off rx271=disabled         mag=200 raw=4367613 selected=709805 loop= 50.0ms
+ 847.8s phase=DRIVE              remain= 0.0 speed= 34.3 cruise=off rx271=disabled         mag=200 raw=4367613 selected=711530 loop= 50.0ms
+ 850.8s phase=DRIVE              remain= 0.0 speed= 32.8 cruise=off rx271=disabled         mag=200 raw=4419266 selected=714707 loop=2403.9ms
+ 853.1s phase=DRIVE              remain= 0.0 speed= 31.6 cruise=off rx271=disabled         mag=200 raw=4430488 selected=716389 loop=2271.1ms
+ 855.5s phase=DRIVE              remain= 0.0 speed= 28.7 cruise=off rx271=disabled         mag=200 raw=4442677 selected=718215 loop=979.6ms
+ 857.6s phase=DRIVE              remain= 0.0 speed= 34.6 cruise=off rx271=disabled         mag=200 raw=4452961 selected=719756 loop= 57.8ms
+ 859.6s phase=DRIVE              remain= 0.0 speed= 32.1 cruise=off rx271=disabled         mag=200 raw=4464206 selected=721445 loop= 50.0ms
+ 861.6s phase=DRIVE              remain= 0.0 speed= 23.3 cruise=off rx271=disabled         mag=200 raw=4468791 selected=723143 loop= 50.0ms
+ 863.6s phase=DRIVE              remain= 0.0 speed= 13.5 cruise=off rx271=disabled         mag=200 raw=4468791 selected=724823 loop= 49.9ms
+ 866.3s phase=DRIVE              remain= 0.0 speed=  9.1 cruise=off rx271=disabled         mag=200 raw=4504739 selected=727530 loop=1660.5ms
+ 868.8s phase=DRIVE              remain= 0.0 speed=  7.1 cruise=off rx271=disabled         mag=200 raw=4516477 selected=729291 loop=933.6ms
+ 870.8s phase=DRIVE              remain= 0.0 speed= 10.3 cruise=off rx271=disabled         mag=200 raw=4526704 selected=730828 loop= 50.2ms
+ 872.8s phase=DRIVE              remain= 0.0 speed= 17.1 cruise=off rx271=disabled         mag=200 raw=4537877 selected=732508 loop= 50.0ms
+ 874.8s phase=DRIVE              remain= 0.0 speed= 23.2 cruise=off rx271=disabled         mag=200 raw=4549228 selected=734214 loop= 50.0ms
+ 876.8s phase=DRIVE              remain= 0.0 speed= 24.5 cruise=on rx271=ready_no_brake   mag=200 raw=4559661 selected=735914 loop= 50.0ms
+ 878.8s phase=DRIVE              remain= 0.0 speed= 23.9 cruise=on rx271=ready_no_brake   mag=200 raw=4559661 selected=737592 loop= 50.0ms
+ 880.9s phase=DRIVE              remain= 0.0 speed= 23.6 cruise=on rx271=ready_no_brake   mag=200 raw=4559661 selected=739313 loop= 50.0ms
+ 882.9s phase=DRIVE              remain= 0.0 speed= 23.9 cruise=on rx271=ready_no_brake   mag=200 raw=4559661 selected=741042 loop= 50.0ms
+ 885.0s phase=DRIVE              remain= 0.0 speed= 22.7 cruise=on rx271=active_brake     mag=1190 raw=4593516 selected=742752 loop= 50.1ms
+ 887.4s phase=DRIVE              remain= 0.0 speed= 16.4 cruise=off rx271=disabled         mag=200 raw=4611199 selected=745411 loop=2402.6ms
+ 889.7s phase=DRIVE              remain= 0.0 speed= 10.7 cruise=off rx271=disabled         mag=200 raw=4622375 selected=747085 loop=2283.1ms
+ 892.2s phase=DRIVE              remain= 0.0 speed=  9.3 cruise=off rx271=disabled         mag=200 raw=4635043 selected=748994 loop=1022.2ms
+ 894.2s phase=DRIVE              remain= 0.0 speed=  8.0 cruise=off rx271=disabled         mag=200 raw=4645090 selected=750503 loop= 79.3ms
+ 896.2s phase=DRIVE              remain= 0.0 speed=  6.3 cruise=off rx271=disabled         mag=200 raw=4656308 selected=752185 loop= 50.1ms
+ 898.2s phase=DRIVE              remain= 0.0 speed=  8.6 cruise=off rx271=disabled         mag=200 raw=4660736 selected=753866 loop= 50.0ms
+ 901.2s phase=DRIVE              remain= 0.0 speed=  9.2 cruise=off rx271=disabled         mag=200 raw=4685756 selected=756611 loop=1135.2ms
+ 903.2s phase=DRIVE              remain= 0.0 speed=  8.0 cruise=off rx271=disabled         mag=200 raw=4695548 selected=758080 loop=380.7ms
+ 905.2s phase=DRIVE              remain= 0.0 speed= 10.1 cruise=off rx271=disabled         mag=200 raw=4706584 selected=759742 loop= 49.9ms
+ 907.2s phase=DRIVE              remain= 0.0 speed= 10.2 cruise=off rx271=disabled         mag=200 raw=4717763 selected=761420 loop= 50.2ms
+ 909.2s phase=DRIVE              remain= 0.0 speed=  9.5 cruise=off rx271=disabled         mag=200 raw=4729008 selected=763106 loop= 50.0ms
+ 911.3s phase=DRIVE              remain= 0.0 speed=  4.5 cruise=off rx271=disabled         mag=200 raw=4740415 selected=764820 loop= 56.5ms
+ 913.3s phase=DRIVE              remain= 0.0 speed=  3.2 cruise=off rx271=disabled         mag=200 raw=4744666 selected=766504 loop= 50.1ms
+ 915.3s phase=DRIVE              remain= 0.0 speed=  5.0 cruise=off rx271=disabled         mag=200 raw=4744666 selected=768185 loop= 50.1ms
+ 917.7s phase=DRIVE              remain= 0.0 speed=  7.4 cruise=off rx271=disabled         mag=200 raw=4779011 selected=770622 loop=1572.5ms
+ 919.9s phase=DRIVE              remain= 0.0 speed=  8.5 cruise=off rx271=disabled         mag=200 raw=4789560 selected=772205 loop=819.3ms
+ 922.0s phase=DRIVE              remain= 0.0 speed= 10.4 cruise=off rx271=disabled         mag=200 raw=4800008 selected=773770 loop= 50.0ms
+ 924.0s phase=DRIVE              remain= 0.0 speed= 14.0 cruise=off rx271=disabled         mag=200 raw=4811345 selected=775478 loop= 50.0ms
+ 926.0s phase=DRIVE              remain= 0.0 speed= 20.7 cruise=off rx271=disabled         mag=200 raw=4822826 selected=777200 loop= 50.1ms
+ 928.1s phase=DRIVE              remain= 0.0 speed= 20.4 cruise=off rx271=disabled         mag=200 raw=4834275 selected=778918 loop= 65.4ms
+ 930.1s phase=DRIVE              remain= 0.0 speed= 19.2 cruise=off rx271=disabled         mag=200 raw=4834834 selected=780600 loop= 50.0ms
+ 933.2s phase=DRIVE              remain= 0.0 speed= 12.8 cruise=off rx271=disabled         mag=200 raw=4865200 selected=783563 loop=1399.3ms
+ 935.2s phase=DRIVE              remain= 0.0 speed=  5.3 cruise=off rx271=disabled         mag=200 raw=4875201 selected=785065 loop=795.8ms
+ 937.3s phase=DRIVE              remain= 0.0 speed=  4.8 cruise=off rx271=disabled         mag=200 raw=4885721 selected=786642 loop= 50.0ms
+ 939.3s phase=DRIVE              remain= 0.0 speed=  7.6 cruise=off rx271=disabled         mag=200 raw=4897020 selected=788338 loop= 53.9ms
+ 941.3s phase=DRIVE              remain= 0.0 speed= 12.3 cruise=off rx271=disabled         mag=200 raw=4908366 selected=790042 loop= 54.5ms
+ 943.4s phase=DRIVE              remain= 0.0 speed= 15.8 cruise=off rx271=disabled         mag=200 raw=4919647 selected=791734 loop= 51.3ms
+ 945.4s phase=DRIVE              remain= 0.0 speed= 18.2 cruise=off rx271=disabled         mag=200 raw=4922170 selected=793414 loop= 48.8ms
+ 947.4s phase=DRIVE              remain= 0.0 speed= 19.9 cruise=off rx271=disabled         mag=200 raw=4922170 selected=795102 loop= 50.4ms
+ 949.4s phase=DRIVE              remain= 0.0 speed= 22.3 cruise=off rx271=disabled         mag=200 raw=4922170 selected=796812 loop= 49.5ms
+ 953.2s phase=DRIVE              remain= 0.0 speed= 17.1 cruise=off rx271=disabled         mag=200 raw=4973606 selected=800626 loop=2398.1ms
+ 955.4s phase=DRIVE              remain= 0.0 speed= 13.1 cruise=off rx271=disabled         mag=200 raw=4984285 selected=802229 loop=2194.4ms
+ 957.9s phase=DRIVE              remain= 0.0 speed= 21.5 cruise=off rx271=disabled         mag=200 raw=4996751 selected=804098 loop=1017.5ms
+ 959.9s phase=DRIVE              remain= 0.0 speed= 26.4 cruise=off rx271=disabled         mag=200 raw=5007486 selected=805706 loop=305.8ms
+ 962.0s phase=DRIVE              remain= 0.0 speed= 25.7 cruise=off rx271=disabled         mag=200 raw=5018600 selected=807381 loop= 50.1ms
+ 964.0s phase=DRIVE              remain= 0.0 speed= 23.0 cruise=off rx271=disabled         mag=200 raw=5023247 selected=809097 loop= 50.0ms
+ 966.1s phase=DRIVE              remain= 0.0 speed= 21.1 cruise=off rx271=disabled         mag=200 raw=5023247 selected=810811 loop= 50.0ms
+ 969.5s phase=DRIVE              remain= 0.0 speed= 22.8 cruise=off rx271=disabled         mag=200 raw=5062239 selected=813936 loop=1441.7ms
+ 971.6s phase=DRIVE              remain= 0.0 speed= 28.4 cruise=off rx271=disabled         mag=200 raw=5072986 selected=815547 loop=463.1ms
+ 973.7s phase=DRIVE              remain= 0.0 speed= 27.9 cruise=off rx271=disabled         mag=200 raw=5083936 selected=817189 loop= 50.0ms
+ 975.7s phase=DRIVE              remain= 0.0 speed= 27.1 cruise=off rx271=disabled         mag=200 raw=5095341 selected=818904 loop= 50.1ms
+ 977.8s phase=DRIVE              remain= 0.0 speed= 22.8 cruise=off rx271=disabled         mag=200 raw=5106799 selected=820628 loop= 55.4ms
+ 979.8s phase=DRIVE              remain= 0.0 speed= 18.3 cruise=off rx271=disabled         mag=200 raw=5111621 selected=822309 loop= 50.0ms
+ 982.9s phase=DRIVE              remain= 0.0 speed= 26.6 cruise=off rx271=disabled         mag=200 raw=5137509 selected=825231 loop=1195.6ms
+ 985.2s phase=DRIVE              remain= 0.0 speed= 32.8 cruise=off rx271=disabled         mag=200 raw=5148915 selected=826940 loop=480.6ms
+ 987.3s phase=DRIVE              remain= 0.0 speed= 34.3 cruise=off rx271=disabled         mag=200 raw=5159872 selected=828584 loop= 50.2ms
+ 989.3s phase=DRIVE              remain= 0.0 speed= 32.2 cruise=off rx271=disabled         mag=200 raw=5171173 selected=830283 loop= 50.2ms
+ 991.3s phase=DRIVE              remain= 0.0 speed= 30.6 cruise=off rx271=disabled         mag=200 raw=5182345 selected=831961 loop= 50.0ms
+ 993.3s phase=DRIVE              remain= 0.0 speed= 30.9 cruise=off rx271=disabled         mag=200 raw=5193802 selected=833683 loop= 50.0ms
+ 995.4s phase=DRIVE              remain= 0.0 speed= 33.1 cruise=off rx271=disabled         mag=200 raw=5195860 selected=835376 loop= 50.0ms
+ 997.4s phase=DRIVE              remain= 0.0 speed= 34.9 cruise=off rx271=disabled         mag=200 raw=5195860 selected=837055 loop= 50.0ms
+ 999.4s phase=DRIVE              remain= 0.0 speed= 35.3 cruise=off rx271=disabled         mag=200 raw=5195860 selected=838756 loop= 50.1ms
+1001.4s phase=DRIVE              remain= 0.0 speed= 33.1 cruise=off rx271=disabled         mag=200 raw=5229762 selected=840434 loop= 49.7ms
+1003.8s phase=DRIVE              remain= 0.0 speed= 29.5 cruise=off rx271=disabled         mag=200 raw=5247470 selected=843094 loop=2388.1ms
+1006.1s phase=DRIVE              remain= 0.0 speed= 27.1 cruise=off rx271=disabled         mag=200 raw=5258603 selected=844768 loop=2290.2ms
+1008.6s phase=DRIVE              remain= 0.0 speed= 26.4 cruise=off rx271=disabled         mag=200 raw=5271461 selected=846694 loop=1038.6ms
+1010.7s phase=DRIVE              remain= 0.0 speed= 27.6 cruise=off rx271=disabled         mag=200 raw=5281943 selected=848268 loop=125.5ms
+1012.7s phase=DRIVE              remain= 0.0 speed= 27.1 cruise=off rx271=disabled         mag=200 raw=5293013 selected=849930 loop= 50.1ms
+1014.7s phase=DRIVE              remain= 0.0 speed= 26.3 cruise=off rx271=disabled         mag=200 raw=5297061 selected=851624 loop= 50.0ms
+1016.7s phase=DRIVE              remain= 0.0 speed= 33.4 cruise=off rx271=disabled         mag=200 raw=5297061 selected=853302 loop= 50.0ms
+1018.7s phase=DRIVE              remain= 0.0 speed= 43.5 cruise=off rx271=disabled         mag=200 raw=5297061 selected=854984 loop= 50.0ms
+1020.8s phase=DRIVE              remain= 0.0 speed= 51.1 cruise=off rx271=disabled         mag=200 raw=5297061 selected=856700 loop= 50.0ms
+1022.8s phase=DRIVE              remain= 0.0 speed= 52.7 cruise=off rx271=disabled         mag=200 raw=5297061 selected=858422 loop= 50.0ms
+1026.9s phase=DRIVE              remain= 0.0 speed= 47.7 cruise=off rx271=disabled         mag=200 raw=5348841 selected=862509 loop=2405.4ms
+1029.2s phase=DRIVE              remain= 0.0 speed= 47.7 cruise=off rx271=disabled         mag=200 raw=5359800 selected=864154 loop=2280.9ms
+1031.7s phase=DRIVE              remain= 0.0 speed= 49.0 cruise=off rx271=disabled         mag=200 raw=5372594 selected=866072 loop=1038.4ms
+1033.8s phase=DRIVE              remain= 0.0 speed= 47.0 cruise=off rx271=disabled         mag=200 raw=5382810 selected=867604 loop= 70.0ms
+1035.8s phase=DRIVE              remain= 0.0 speed= 45.4 cruise=off rx271=disabled         mag=200 raw=5394203 selected=869320 loop= 50.0ms
+1037.8s phase=DRIVE              remain= 0.0 speed= 45.2 cruise=on rx271=ready_no_brake   mag=200 raw=5398005 selected=871023 loop= 50.3ms
+1039.9s phase=DRIVE              remain= 0.0 speed= 44.1 cruise=on rx271=ready_no_brake   mag=200 raw=5398005 selected=872747 loop= 50.0ms
+1042.8s phase=DRIVE              remain= 0.0 speed= 43.2 cruise=on rx271=ready_no_brake   mag=200 raw=5435157 selected=875484 loop=1416.6ms
+1045.1s phase=DRIVE              remain= 0.0 speed= 43.1 cruise=on rx271=ready_no_brake   mag=200 raw=5446191 selected=877140 loop=283.7ms
+1047.1s phase=DRIVE              remain= 0.0 speed= 42.9 cruise=on rx271=ready_no_brake   mag=200 raw=5457356 selected=878820 loop= 50.1ms
+1049.2s phase=DRIVE              remain= 0.0 speed= 43.6 cruise=on rx271=ready_no_brake   mag=200 raw=5468737 selected=880530 loop= 46.5ms
+1051.2s phase=DRIVE              remain= 0.0 speed= 44.3 cruise=on rx271=ready_no_brake   mag=200 raw=5479921 selected=882208 loop= 52.0ms
+1053.2s phase=DRIVE              remain= 0.0 speed= 44.1 cruise=on rx271=ready_no_brake   mag=200 raw=5484667 selected=883896 loop= 50.1ms
+1055.2s phase=DRIVE              remain= 0.0 speed= 45.4 cruise=on rx271=ready_no_brake   mag=200 raw=5484667 selected=885568 loop= 50.8ms
+1057.2s phase=DRIVE              remain= 0.0 speed= 45.2 cruise=on rx271=ready_no_brake   mag=200 raw=5484667 selected=887296 loop= 50.3ms
+1059.9s phase=DRIVE              remain= 0.0 speed= 44.6 cruise=on rx271=ready_no_brake   mag=200 raw=5532737 selected=890154 loop=2272.1ms
+1062.1s phase=DRIVE              remain= 0.0 speed= 44.1 cruise=on rx271=active_brake     mag=1219 raw=5543404 selected=891758 loop=2180.8ms
+1064.5s phase=DRIVE              remain= 0.0 speed= 43.6 cruise=on rx271=ready_no_brake   mag=200 raw=5555276 selected=893543 loop=952.4ms
+1066.5s phase=DRIVE              remain= 0.0 speed= 42.5 cruise=off rx271=disabled         mag=200 raw=5565558 selected=895083 loop= 73.1ms
+1068.5s phase=DRIVE              remain= 0.0 speed= 44.4 cruise=off rx271=disabled         mag=200 raw=5576829 selected=896777 loop= 50.0ms
+1070.5s phase=DRIVE              remain= 0.0 speed= 43.7 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=898476 loop= 50.0ms
+1072.6s phase=DRIVE              remain= 0.0 speed= 42.9 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=900174 loop= 50.0ms
+1074.6s phase=DRIVE              remain= 0.0 speed= 42.5 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=901862 loop= 50.3ms
+1076.6s phase=DRIVE              remain= 0.0 speed= 42.2 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=903572 loop= 50.0ms
+1078.7s phase=DRIVE              remain= 0.0 speed= 42.4 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=905304 loop= 50.1ms
+1080.7s phase=DRIVE              remain= 0.0 speed= 42.5 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=906984 loop= 50.7ms
+1082.7s phase=DRIVE              remain= 0.0 speed= 43.2 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=908662 loop= 50.0ms
+1084.7s phase=DRIVE              remain= 0.0 speed= 43.6 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=910338 loop= 50.2ms
+1086.7s phase=DRIVE              remain= 0.0 speed= 43.7 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=912018 loop= 50.4ms
+1088.7s phase=DRIVE              remain= 0.0 speed= 44.0 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=913730 loop= 50.0ms
+1090.7s phase=DRIVE              remain= 0.0 speed= 43.9 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=915406 loop= 50.0ms
+1092.8s phase=DRIVE              remain= 0.0 speed= 43.9 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=917128 loop= 50.0ms
+1094.8s phase=DRIVE              remain= 0.0 speed= 44.0 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=918816 loop= 50.0ms
+1096.8s phase=DRIVE              remain= 0.0 speed= 44.0 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=920492 loop= 50.2ms
+1098.8s phase=DRIVE              remain= 0.0 speed= 44.1 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=922206 loop= 50.0ms
+1100.9s phase=DRIVE              remain= 0.0 speed= 44.0 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=923934 loop= 51.0ms
+1102.9s phase=DRIVE              remain= 0.0 speed= 42.7 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=925646 loop= 49.8ms
+1104.9s phase=DRIVE              remain= 0.0 speed= 40.3 cruise=on rx271=ready_no_brake   mag=200 raw=5583017 selected=927324 loop= 50.0ms
+1109.0s phase=DRIVE              remain= 0.0 speed= 34.8 cruise=on rx271=ready_no_brake   mag=200 raw=5634802 selected=931411 loop=2436.8ms
+1111.4s phase=DRIVE              remain= 0.0 speed= 32.9 cruise=off rx271=disabled         mag=200 raw=5646535 selected=933170 loop=2348.4ms
+1114.2s phase=DRIVE              remain= 0.0 speed= 31.6 cruise=off rx271=disabled         mag=200 raw=5660860 selected=935321 loop=1192.8ms
+1116.3s phase=DRIVE              remain= 0.0 speed= 32.0 cruise=off rx271=disabled         mag=200 raw=5671880 selected=936970 loop=518.7ms
+1118.3s phase=DRIVE              remain= 0.0 speed= 27.3 cruise=off rx271=disabled         mag=200 raw=5682734 selected=938599 loop= 70.5ms
+1120.3s phase=DRIVE              remain= 0.0 speed= 22.4 cruise=off rx271=disabled         mag=200 raw=5684063 selected=940287 loop= 50.1ms
+1122.4s phase=DRIVE              remain= 0.0 speed= 19.4 cruise=off rx271=disabled         mag=200 raw=5684063 selected=942005 loop= 50.0ms
+1125.0s phase=DRIVE              remain= 0.0 speed= 12.6 cruise=off rx271=disabled         mag=200 raw=5723087 selected=944659 loop=1803.1ms
+1127.7s phase=DRIVE              remain= 0.0 speed=  6.0 cruise=off rx271=disabled         mag=200 raw=5736167 selected=946622 loop=1026.3ms
+1129.7s phase=DRIVE              remain= 0.0 speed=  8.1 cruise=off rx271=disabled         mag=200 raw=5746442 selected=948167 loop= 50.1ms
+1131.8s phase=DRIVE              remain= 0.0 speed= 10.9 cruise=off rx271=disabled         mag=200 raw=5757745 selected=949862 loop= 50.0ms
+1133.8s phase=DRIVE              remain= 0.0 speed= 13.7 cruise=off rx271=disabled         mag=200 raw=5768964 selected=951548 loop= 53.9ms
+1135.8s phase=DRIVE              remain= 0.0 speed= 15.0 cruise=off rx271=disabled         mag=200 raw=5777207 selected=953250 loop= 50.0ms
+1137.8s phase=DRIVE              remain= 0.0 speed= 15.2 cruise=off rx271=disabled         mag=200 raw=5777207 selected=954930 loop= 49.9ms
+1139.8s phase=DRIVE              remain= 0.0 speed= 15.4 cruise=off rx271=disabled         mag=200 raw=5777207 selected=956603 loop= 50.0ms
+
+Logger stopped cleanly.
+Summary rows: 15226
+Selected CAN frames: 957779
+Raw event frames: 5777207
+Summary: /data/openpilot/dnga_solo_summary_0722_103659.csv.gz
+Selected CAN: /data/openpilot/dnga_solo_selected_can_0722_103659.csv.gz
+Raw events: /data/openpilot/dnga_solo_raw_events_0722_103659.csv.gz
+Events: /data/openpilot/dnga_solo_events_0722_103659.csv

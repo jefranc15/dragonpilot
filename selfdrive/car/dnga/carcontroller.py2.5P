@@ -1,0 +1,795 @@
+from selfdrive.car import make_can_msg
+from selfdrive.car.dnga.dngacan import (
+  create_can_steer_command,
+  dnga_create_accel_command,
+  dnga_create_brake_command,
+  dnga_create_hud,
+)
+from selfdrive.car.dnga.values import DBC, NOT_CAN_CONTROLLED
+from opendbc.can.packer import CANPacker
+from common.numpy_fast import clip, interp
+from selfdrive.config import Conversions as CV
+
+try:
+  from common.features import Features
+except ImportError:
+  class Features:
+    def has(self, feature_name):
+      return False
+
+
+# V2.5P HEV longitudinal smoothing with explicit 0x273 state bits.
+#
+# The existing HEV DBC exposes bytes 4-5 of ACC_BRAKE/0x271 as one 16-bit
+# MAGNITUDE value. Stock traffic and BukaPilot's newer DNGA DBC show that the
+# two bytes are actually separate fields:
+#   byte 4: positive pump stage (0.4, 0.5, 0.6, 0.7)
+#   byte 5: decel command encoded as physical_value = raw * 0.01 - 2.0
+# PUMP_REACTION2 in byte 3 carries the matching negative pump stage.
+#
+# V2.5P keeps the V2.5O braking and stock-observed 0x21 -> 0x31 -> 0x30
+# stop sequence, and now selects the two 0x273 longitudinal state bits
+# explicitly. 0x30/0x31 remain lead-armed; no-lead braking cannot enter them.
+#
+# Hybrid-specific strategy:
+#   * 0x01 remains the normal enabled state for propulsion, coasting, and
+#     gentle desired-speed/regen deceleration. Neutral 0x01 never asserts the
+#     unverified 0x273 IS_DECEL combination.
+#   * A sustained no-lead negative planner request may use 0x21, but output is
+#     capped at 0.12 m/s^2 and disabled below 10.8 km/h. This is only a mild
+#     supplement for curves/downhill overspeed, not full no-lead braking.
+#   * Trusted-lead braking retains the existing 0.75 m/s^2 maximum and can arm
+#     stock-pattern 0x31 approach and 0x30 standstill hold.
+#   * Desired speed is always anchored to current vEgo, so it cannot repeat the
+#     old actuators.speed=0 engagement bug.
+V25L_BRAKE_MIN = 0.05
+V25L_BRAKE_RELEASE = 0.14
+V25L_BRAKE_URGENT_ENTRY = 0.60
+V25L_BRAKE_MAX = 0.75
+V25L_BRAKE_STEP_UP = 0.05
+V25L_BRAKE_STEP_DOWN = 0.03
+V25L_BRAKE_FILTER_UP = 0.25
+V25L_BRAKE_FILTER_DOWN = 0.18
+V25L_BRAKE_RELEASE_STEP = 0.08 # fast, smooth planner-relaxation taper
+V25L_BRAKE_ENTRY_FRAMES = 3       # 0.15 seconds at 20 Hz
+V25L_LEAD_TRUST_FRAMES = 10       # 0.50 seconds at 20 Hz
+V25L_URGENT_LEAD_FRAMES = 3       # 0.15 seconds at 20 Hz
+V25L_REENTRY_BLOCK_FRAMES = 30    # 0.30 seconds at the 100 Hz frame clock
+V25L_PROPULSION_DWELL_FRAMES = 25 # 0.25 seconds after hydraulic release
+V25L_MIN_MOVING_SPEED = 0.15      # 0.54 km/h; no standstill hold
+V25L_MIN_ENTRY_SPEED = 0.50       # do not begin a new brake pulse near zero
+
+# Stock-like 0x01 desired-speed shaping. Positive acceleration follows the
+# previously successful continuous target strategy, while negative planner
+# demand ramps into a conservative current-speed-relative offset. This allows
+# no-lead curve slowing without enabling hydraulic braking.
+V25L_DECEL_DEADBAND = 0.02
+V25L_DECEL_OFFSET_STEP_DOWN = 0.02 # m/s per 20 Hz: gentle coast-to-regen entry
+V25L_DECEL_OFFSET_STEP_UP = 0.10   # m/s per 20 Hz: quick release toward neutral
+V25L_ACCEL_ENTRY = 0.12
+V25L_ACCEL_CAP = 0.35
+V25L_ACCEL_OFFSET_STEP_UP = 0.02   # m/s per 20 Hz
+V25L_ACCEL_OFFSET_STEP_DOWN = 0.04
+V25L_ACCEL_OFFSET_MAX = 0.80
+
+# V2.5O mild no-lead hydraulic supplement. It requires a sustained strong
+# planner request, but the sent brake command is intentionally much smaller.
+V25O_NOLEAD_BRAKE_ENTRY = 0.40
+V25O_NOLEAD_BRAKE_RELEASE = 0.18
+V25O_NOLEAD_BRAKE_MAX = 0.12
+V25O_NOLEAD_ENTRY_FRAMES = 8       # 0.40 seconds at 20 Hz
+V25O_NOLEAD_MIN_SPEED = 3.0        # 10.8 km/h; never stop the car without a lead
+
+# Stock-observed stop-and-go states. 0x31 is used during the final crawl and
+# 0x30 holds standstill at the minimum known brake command (0x04C3).
+V25O_SNG_ARM_SPEED = 2.5            # 9.0 km/h
+V25O_SNG_APPROACH_SPEED = 1.2       # 4.3 km/h
+V25O_SNG_ARM_BRAKE = 0.18
+V25O_SNG_HOLD_BRAKE = 0.05
+V25O_SNG_RELEASE_ACCEL = 0.08
+V25O_SNG_RELEASE_FRAMES = 5         # 0.25 seconds at 20 Hz
+
+V25O_BRAKE_MODE_NONE = 0
+V25O_BRAKE_MODE_LEAD = 1
+V25O_BRAKE_MODE_NOLEAD = 2
+
+
+def v25l_rate_limit_brake(target, last):
+  if target > last:
+    return min(target, last + V25L_BRAKE_STEP_UP)
+  return max(target, last - V25L_BRAKE_STEP_DOWN)
+
+
+def v25l_low_speed_brake_cap(v_ego):
+  """Taper moving brake authority smoothly toward zero vehicle speed."""
+  return float(interp(
+    v_ego,
+    [0.15, 0.30, 0.60, 1.00, 1.50, 2.50],
+    [0.05, 0.08, 0.15, 0.25, 0.40, 0.75],
+  ))
+
+
+def v25l_high_speed_brake_cap(v_ego):
+  """Keep experimental hydraulic authority conservative at highway speed."""
+  return float(interp(
+    v_ego,
+    [0.0, 15.0, 25.0, 35.0, 45.0],
+    [0.75, 0.75, 0.65, 0.55, 0.50],
+  ))
+
+
+
+def v25l_hydraulic_entry(v_ego):
+  """Require stronger planner deceleration before 0x21 at road speed."""
+  return float(interp(
+    v_ego,
+    [0.0, 4.0, 15.0, 25.0, 35.0],
+    [0.25, 0.25, 0.38, 0.47, 0.52],
+  ))
+
+
+def v25l_powertrain_decel_cap(v_ego):
+  """Maximum 0x01 desired-speed offset below vEgo for regen/coasting."""
+  return float(interp(
+    v_ego,
+    [0.0, 4.0, 15.0, 25.0, 35.0],
+    [0.08, 0.15, 0.28, 0.40, 0.45],
+  ))
+
+
+def v25l_encode_hev_brake(brake_cmd):
+  """Return (negative pump reaction, legacy combined raw magnitude)."""
+  brake_cmd = float(clip(brake_cmd, V25L_BRAKE_MIN, V25L_BRAKE_MAX))
+  pump = 0.4
+
+  magnitude_byte = int(round(200.0 - 100.0 * brake_cmd))
+  magnitude_byte = int(clip(magnitude_byte, 0, 255))
+  pump_byte = int(round(pump * 10.0))
+
+  # Preserve the current DBC's 16-bit MAGNITUDE packing exactly.
+  combined_magnitude = (pump_byte << 8) | magnitude_byte
+  return -pump, combined_magnitude
+
+
+def apply_dnga_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, blinkerOn, LIMITS):
+  reduced_torque_mult = 10 if blinkerOn else 1.5
+
+  driver_max_torque = 255 + driver_torque * reduced_torque_mult
+  driver_min_torque = -255 - driver_torque * reduced_torque_mult
+
+  max_steer_allowed = clip(driver_max_torque, 0, 255)
+  min_steer_allowed = clip(driver_min_torque, -255, 0)
+
+  apply_torque = clip(apply_torque, min_steer_allowed, max_steer_allowed)
+
+  if apply_torque_last > 0:
+    apply_torque = clip(
+      apply_torque,
+      max(apply_torque_last - LIMITS.STEER_DELTA_DOWN, -LIMITS.STEER_DELTA_UP),
+      apply_torque_last + LIMITS.STEER_DELTA_UP
+    )
+  else:
+    apply_torque = clip(
+      apply_torque,
+      apply_torque_last - LIMITS.STEER_DELTA_UP,
+      min(apply_torque_last + LIMITS.STEER_DELTA_DOWN, LIMITS.STEER_DELTA_UP)
+    )
+
+  return int(round(float(apply_torque)))
+
+
+class CarControllerParams():
+  def __init__(self, CP):
+    self.STEER_BP = CP.lateralParams.torqueBP
+    self.STEER_LIM_TORQ = CP.lateralParams.torqueV
+
+    if CP.carFingerprint in NOT_CAN_CONTROLLED:
+      self.STEER_DELTA_UP = 20
+      self.STEER_DELTA_DOWN = 30
+    else:
+      self.STEER_DELTA_UP = 22
+      self.STEER_DELTA_DOWN = 35
+
+
+class CarController():
+  def __init__(self, dbc_name, CP, VM):
+    self.last_steer = 0
+    self.steer_rate_limited = False
+
+    self.params = CarControllerParams(CP)
+    self.packer = CANPacker(DBC[CP.carFingerprint]['pt'])
+
+    f = Features()
+    self.need_clear_engine = f.has("ClearCode")
+
+    self.stockLdw = False
+
+    self.prev_enabled = False
+    self.block_brake_until_frame = 0
+
+    # V2.5O hydraulic state, stop-and-go latch, and continuous desired-speed
+    # offset for acceleration, coasting, and regenerative deceleration.
+    self.v25l_apply_brake = 0.0
+    self.v25l_brake_target = 0.0
+    self.v25l_brake_active = False
+    self.v25l_brake_entry_counter = 0
+    self.v25o_nolead_entry_counter = 0
+    self.v25o_brake_mode = V25O_BRAKE_MODE_NONE
+    self.v25o_sng_armed = False
+    self.v25o_stop_hold = False
+    self.v25o_sng_release_frames = 0
+    self.v25l_lead_counter = 0
+    self.v25l_brake_reentry_frame = 0
+    self.v25l_propulsion_block_until_frame = 0
+    self.v25l_speed_offset = 0.0
+
+  def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
+             hud_alert, left_line, right_line, lead,
+             left_lane_depart, right_lane_depart, dragonconf):
+
+    can_sends = []  # Create the list that will hold all CAN messages for this control cycle
+
+    # -----------------------------
+    # Steering
+    # -----------------------------
+    steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)  # Get speed-based steering torque limit
+    steer_max_interp = max(1.0, steer_max_interp)  # Avoid divide-by-zero if the torque table returns 0
+
+    new_steer = int(round(actuators.steer * steer_max_interp))  # Convert normalized OP steer command into raw torque
+
+    isBlinkerOn = CS.out.leftBlinker != CS.out.rightBlinker  # True when only one blinker is active
+
+    apply_steer = apply_dnga_steer_torque_limits(  # Apply steering torque and rate limits
+      new_steer,  # Requested raw steering torque
+      self.last_steer,  # Last applied raw steering torque
+      CS.out.steeringTorqueEps,  # Driver torque from EPS
+      isBlinkerOn,  # Blinker state for driver override allowance
+      self.params  # Steering limit parameters
+    )
+
+    self.steer_rate_limited = (new_steer != apply_steer) and (apply_steer != 0)  # Mark whether steering was rate limited
+    self.steer_rate_limited &= not CS.out.steeringPressed  # Do not show rate limit if driver is steering
+
+    # -----------------------------
+    # Longitudinal base values
+    # -----------------------------
+    apply_accel = clip(actuators.accel, -3.0, 1.5)  # Clamp openpilot accel request
+    apply_brake = -apply_accel if apply_accel < 0.0 else 0.0  # Convert negative accel into positive brake amount
+
+    if enabled and not self.prev_enabled:  # Detect the first frame after OP engagement
+      self.block_brake_until_frame = frame + 50  # Let engagement settle for 0.5 seconds
+      self.v25l_apply_brake = 0.0
+      self.v25l_brake_target = 0.0
+      self.v25l_brake_active = False
+      self.v25l_brake_entry_counter = 0
+      self.v25o_nolead_entry_counter = 0
+      self.v25o_brake_mode = V25O_BRAKE_MODE_NONE
+      self.v25o_sng_armed = False
+      self.v25o_stop_hold = False
+      self.v25o_sng_release_frames = 0
+      self.v25l_lead_counter = 0
+      self.v25l_brake_reentry_frame = frame
+      self.v25l_propulsion_block_until_frame = frame
+      self.v25l_speed_offset = 0.0
+
+    self.prev_enabled = enabled  # Save enabled state for the next control cycle
+
+    # Do not send diagnostic clear-code frames automatically at startup.
+    if self.need_clear_engine:
+      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))
+
+    # -----------------------------
+    # Steering command, 50 Hz
+    # -----------------------------
+    if (frame % 2) == 0:  # Send steering every 2 frames
+      steer_req = (enabled or self.stockLdw) and CS.lkas_latch  # Request steering when OP/LDA is active and LKAS latch is on
+      can_sends.append(  # Add steering CAN message
+        create_can_steer_command(  # Build STEERING_LKAS frame
+          self.packer,  # CAN packer
+          apply_steer,  # Raw torque command
+          steer_req,  # Steering request bit
+          (frame // 2) % 16  # Steering counter
+        )
+      )
+
+    # -----------------------------
+    # Longitudinal / HUD, 20 Hz
+    # -----------------------------
+    if (frame % 5) == 0:  # Send ACC/HUD messages every 5 frames
+
+      t_lookup = 0.35 + 0.07 * CS.out.vEgo
+
+      # Qualify camera leads before allowing hydraulic 0x21. Gentle 0x01
+      # powertrain deceleration is allowed without a lead so the planner can
+      # slow for curves. Resetting this counter on engagement prevents a stale
+      # one-frame model detection from entering the hydraulic path.
+      if lead:
+        self.v25l_lead_counter = min(
+          self.v25l_lead_counter + 1,
+          V25L_LEAD_TRUST_FRAMES,
+        )
+      else:
+        self.v25l_lead_counter = 0
+
+      trusted_lead = self.v25l_lead_counter >= V25L_LEAD_TRUST_FRAMES
+      urgent_lead = self.v25l_lead_counter >= V25L_URGENT_LEAD_FRAMES
+
+      # -----------------------------
+      # ACC_BRAKE / 0x271 state map from logs
+      # -----------------------------
+      # 0x00 + pump 0.0 + mag 200 = disabled / neutral / no brake
+      # 0x01 + pump 0.0 + mag 200 = enabled / ready / no brake
+      # 0x21 + pump -0.4 + mag 0x04xx = active braking request
+      # 0x31 = final stop approach; 0x30 = standstill hold (verified in rlogs)
+
+      if not enabled:  # OP is not engaged
+        brake_state = 0x00  # Use disabled/neutral brake state
+        pump_reaction = 0.0  # No pump reaction
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
+
+      else:  # OP is engaged but not necessarily braking
+        brake_state = 0x01  # Use enabled/no-brake state found in logs
+        pump_reaction = 0.0  # No pump reaction while not braking
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
+
+      # -----------------------------
+      # V2.5O hydraulic braking and stop-and-go
+      # -----------------------------
+      brake_request = apply_brake
+
+      control_allowed = (
+        enabled and
+        CS.out.cruiseState.enabled and
+        not pcm_cancel_cmd and
+        not CS.out.gasPressed and
+        not CS.out.brakePressed
+      )
+      moving_allowed = control_allowed and not CS.out.standstill
+
+      def clear_hydraulic(reentry=True, propulsion_dwell=True):
+        self.v25l_apply_brake = 0.0
+        self.v25l_brake_target = 0.0
+        self.v25l_brake_active = False
+        self.v25l_brake_entry_counter = 0
+        self.v25o_nolead_entry_counter = 0
+        self.v25o_brake_mode = V25O_BRAKE_MODE_NONE
+        if reentry:
+          self.v25l_brake_reentry_frame = frame + V25L_REENTRY_BLOCK_FRAMES
+        if propulsion_dwell:
+          self.v25l_propulsion_block_until_frame = (
+            frame + V25L_PROPULSION_DWELL_FRAMES
+          )
+
+      # A latched 0x30 hold is released only by a safety exit or a real positive
+      # planner request. Lead loss alone does not release the stopped vehicle.
+      if self.v25o_stop_hold:
+        hold_safety_exit = not control_allowed
+        hold_resume = apply_accel >= V25O_SNG_RELEASE_ACCEL
+
+        if hold_safety_exit or hold_resume:
+          self.v25o_stop_hold = False
+          clear_hydraulic(reentry=False, propulsion_dwell=False)
+          if hold_safety_exit:
+            self.v25o_sng_armed = False
+            self.v25o_sng_release_frames = 0
+          else:
+            # Stock logs briefly use 0x01 with pump -0.4/+0.4 and neutral C8
+            # while releasing 0x30. Keep the stop armed until the car moves so
+            # a withdrawn launch request can safely re-enter hold.
+            self.v25o_sng_release_frames = V25O_SNG_RELEASE_FRAMES
+        else:
+          self.v25l_brake_active = True
+          self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
+          self.v25l_apply_brake = V25O_SNG_HOLD_BRAKE
+          self.v25l_brake_target = V25O_SNG_HOLD_BRAKE
+          self.v25l_speed_offset = 0.0
+
+      sng_release_active = False
+      if self.v25o_sng_release_frames > 0:
+        if not control_allowed:
+          self.v25o_sng_release_frames = 0
+          self.v25o_sng_armed = False
+        else:
+          sng_release_active = True
+          self.v25o_sng_release_frames -= 1
+          self.v25l_brake_active = False
+          self.v25o_brake_mode = V25O_BRAKE_MODE_NONE
+          self.v25l_apply_brake = 0.0
+          self.v25l_brake_target = 0.0
+          self.v25l_speed_offset = 0.0
+
+      # Enter standstill hold only after a trusted-lead hydraulic approach has
+      # armed stop-and-go. No-lead 0x21 is explicitly unable to arm this path.
+      if (
+        not sng_release_active and
+        not self.v25o_stop_hold and
+        self.v25o_sng_armed and
+        CS.out.standstill and
+        control_allowed and
+        apply_accel < V25O_SNG_RELEASE_ACCEL
+      ):
+        self.v25o_stop_hold = True
+        self.v25l_brake_active = True
+        self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
+        self.v25l_apply_brake = V25O_SNG_HOLD_BRAKE
+        self.v25l_brake_target = V25O_SNG_HOLD_BRAKE
+        self.v25l_speed_offset = 0.0
+
+      soft_releasing_hydraulic = False
+
+      if not sng_release_active and not self.v25o_stop_hold and self.v25l_brake_active:
+        shared_hard_release = (
+          not moving_allowed or
+          apply_accel >= 0.0
+        )
+
+        # A lead brake may downgrade to the capped no-lead mode if the lead
+        # disappears but the planner still requests sustained deceleration.
+        if (
+          self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD and
+          not lead and
+          moving_allowed and
+          CS.out.vEgo > V25O_NOLEAD_MIN_SPEED and
+          brake_request >= V25O_NOLEAD_BRAKE_ENTRY
+        ):
+          self.v25o_brake_mode = V25O_BRAKE_MODE_NOLEAD
+          self.v25o_sng_armed = False
+          self.v25l_apply_brake = min(
+            self.v25l_apply_brake, V25O_NOLEAD_BRAKE_MAX
+          )
+          self.v25l_brake_target = min(
+            self.v25l_brake_target, V25O_NOLEAD_BRAKE_MAX
+          )
+          shared_hard_release = False
+
+        mode_release = False
+        release_threshold = V25L_BRAKE_RELEASE
+        if self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD:
+          mode_release = not lead
+        elif self.v25o_brake_mode == V25O_BRAKE_MODE_NOLEAD:
+          release_threshold = V25O_NOLEAD_BRAKE_RELEASE
+          mode_release = CS.out.vEgo <= V25O_NOLEAD_MIN_SPEED
+
+          # Upgrade a no-lead mild request when a persistent lead appears.
+          if trusted_lead and brake_request >= v25l_hydraulic_entry(CS.out.vEgo):
+            self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
+            mode_release = False
+
+        hard_release_hydraulic = shared_hard_release or mode_release
+        soft_release_hydraulic = (
+          not hard_release_hydraulic and
+          brake_request < release_threshold
+        )
+
+        if hard_release_hydraulic:
+          self.v25o_sng_armed = False
+          clear_hydraulic()
+
+        elif soft_release_hydraulic:
+          soft_releasing_hydraulic = True
+          self.v25l_brake_target = V25L_BRAKE_MIN
+          self.v25l_apply_brake = max(
+            0.0,
+            self.v25l_apply_brake - V25L_BRAKE_RELEASE_STEP,
+          )
+
+          if self.v25l_apply_brake < V25L_BRAKE_MIN:
+            self.v25o_sng_armed = False
+            clear_hydraulic()
+
+      hydraulic_entry = v25l_hydraulic_entry(CS.out.vEgo)
+
+      if not sng_release_active and not self.v25o_stop_hold and not self.v25l_brake_active:
+        lead_entry = (
+          moving_allowed and
+          trusted_lead and
+          CS.out.vEgo > V25L_MIN_ENTRY_SPEED and
+          frame > self.block_brake_until_frame and
+          frame >= self.v25l_brake_reentry_frame and
+          brake_request >= hydraulic_entry
+        )
+        urgent_entry = (
+          moving_allowed and
+          urgent_lead and
+          CS.out.vEgo > V25L_MIN_ENTRY_SPEED and
+          frame > self.block_brake_until_frame and
+          brake_request >= V25L_BRAKE_URGENT_ENTRY
+        )
+        nolead_entry = (
+          moving_allowed and
+          not trusted_lead and
+          CS.out.vEgo > V25O_NOLEAD_MIN_SPEED and
+          frame > self.block_brake_until_frame and
+          frame >= self.v25l_brake_reentry_frame and
+          brake_request >= V25O_NOLEAD_BRAKE_ENTRY
+        )
+
+        if lead_entry:
+          self.v25l_brake_entry_counter = min(
+            self.v25l_brake_entry_counter + 1,
+            V25L_BRAKE_ENTRY_FRAMES,
+          )
+        else:
+          self.v25l_brake_entry_counter = 0
+
+        if nolead_entry:
+          self.v25o_nolead_entry_counter = min(
+            self.v25o_nolead_entry_counter + 1,
+            V25O_NOLEAD_ENTRY_FRAMES,
+          )
+        else:
+          self.v25o_nolead_entry_counter = 0
+
+        if urgent_entry or self.v25l_brake_entry_counter >= V25L_BRAKE_ENTRY_FRAMES:
+          self.v25l_brake_active = True
+          self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
+          self.v25l_apply_brake = V25L_BRAKE_MIN
+          self.v25l_brake_target = V25L_BRAKE_MIN
+          self.v25l_brake_entry_counter = 0
+          self.v25o_nolead_entry_counter = 0
+          self.v25l_speed_offset = 0.0
+
+        elif self.v25o_nolead_entry_counter >= V25O_NOLEAD_ENTRY_FRAMES:
+          self.v25l_brake_active = True
+          self.v25o_brake_mode = V25O_BRAKE_MODE_NOLEAD
+          self.v25l_apply_brake = V25L_BRAKE_MIN
+          self.v25l_brake_target = V25L_BRAKE_MIN
+          self.v25l_brake_entry_counter = 0
+          self.v25o_nolead_entry_counter = 0
+          self.v25o_sng_armed = False
+          self.v25l_speed_offset = 0.0
+
+      if self.v25l_brake_active and not self.v25o_stop_hold:
+        if not soft_releasing_hydraulic:
+          speed_scale = interp(
+            CS.out.vEgo,
+            [0.0, 140.0 * CV.KPH_TO_MS],
+            [1.0, 1.0 / 1.5]
+          )
+
+          if self.v25o_brake_mode == V25O_BRAKE_MODE_NOLEAD:
+            brake_cap = V25O_NOLEAD_BRAKE_MAX
+          else:
+            brake_cap = min(
+              V25L_BRAKE_MAX,
+              v25l_low_speed_brake_cap(CS.out.vEgo),
+              v25l_high_speed_brake_cap(CS.out.vEgo),
+            )
+
+          raw_target_brake = float(clip(
+            brake_request * speed_scale,
+            V25L_BRAKE_MIN,
+            brake_cap,
+          ))
+          filter_alpha = (
+            V25L_BRAKE_FILTER_UP
+            if raw_target_brake > self.v25l_brake_target
+            else V25L_BRAKE_FILTER_DOWN
+          )
+          self.v25l_brake_target += filter_alpha * (
+            raw_target_brake - self.v25l_brake_target
+          )
+          self.v25l_brake_target = float(clip(
+            self.v25l_brake_target,
+            V25L_BRAKE_MIN,
+            brake_cap,
+          ))
+          self.v25l_apply_brake = min(
+            brake_cap,
+            v25l_rate_limit_brake(
+              self.v25l_brake_target,
+              self.v25l_apply_brake,
+            ),
+          )
+
+        if (
+          self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD and
+          trusted_lead and
+          CS.out.vEgo <= V25O_SNG_ARM_SPEED and
+          brake_request >= V25O_SNG_ARM_BRAKE
+        ):
+          self.v25o_sng_armed = True
+
+        self.v25l_propulsion_block_until_frame = max(
+          self.v25l_propulsion_block_until_frame,
+          frame + V25L_PROPULSION_DWELL_FRAMES,
+        )
+
+      if (
+        self.v25o_sng_armed and
+        not self.v25o_stop_hold and
+        self.v25o_sng_release_frames == 0 and
+        CS.out.vEgo > V25O_SNG_APPROACH_SPEED and
+        apply_accel >= 0.0
+      ):
+        self.v25o_sng_armed = False
+
+      hydraulic_req = (
+        self.v25l_brake_active and
+        self.v25l_apply_brake >= V25L_BRAKE_MIN
+      )
+
+      if hydraulic_req:
+        if self.v25o_stop_hold:
+          brake_state = 0x30
+          self.v25l_apply_brake = V25O_SNG_HOLD_BRAKE
+        elif (
+          self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD and
+          self.v25o_sng_armed and
+          CS.out.vEgo <= V25O_SNG_APPROACH_SPEED
+        ):
+          brake_state = 0x31
+        else:
+          brake_state = 0x21
+
+        pump_reaction, brake_mag = v25l_encode_hev_brake(
+          self.v25l_apply_brake
+        )
+
+      elif sng_release_active:
+        # Verified stock release/staging combination: state 0x01, pump
+        # -0.4/+0.4, and neutral magnitude byte C8.
+        brake_state = 0x01
+        pump_reaction = -0.4
+        brake_mag = (4 << 8) | 200
+
+      # -----------------------------
+      # V2.5O stock-like desired-speed acceleration / coasting / deceleration
+      # -----------------------------
+      # The planner's acceleration request is converted into a desired-speed
+      # offset relative to current vEgo. This preserves the smooth KA1S-style
+      # powertrain behavior without ever using actuators.speed as the base, so
+      # a stale/zero planner speed cannot command a return to 0 km/h.
+      #
+      # Negative requests first use neutral 0x01 desired-speed reduction. A
+      # sustained strong no-lead request may transition to the separately capped
+      # mild 0x21 path, and hydraulic braking never stacks with this offset.
+      propulsion_blocked = (
+        hydraulic_req or
+        frame < self.v25l_propulsion_block_until_frame
+      )
+
+      if not control_allowed or hydraulic_req or sng_release_active:
+        self.v25l_speed_offset = 0.0
+
+      elif (
+        apply_accel <= -V25L_DECEL_DEADBAND and
+        frame > self.block_brake_until_frame and
+        frame >= self.v25l_brake_reentry_frame
+      ):
+        target_offset = -min(
+          v25l_powertrain_decel_cap(CS.out.vEgo),
+          brake_request * t_lookup,
+        )
+
+        # Cross from propulsion to neutral before requesting regen. Ramp into
+        # negative offset slowly to create a brief stock-like coasting phase.
+        if self.v25l_speed_offset > 0.0:
+          self.v25l_speed_offset = 0.0
+        elif target_offset < self.v25l_speed_offset:
+          self.v25l_speed_offset = max(
+            target_offset,
+            self.v25l_speed_offset - V25L_DECEL_OFFSET_STEP_DOWN,
+          )
+        else:
+          self.v25l_speed_offset = min(
+            target_offset,
+            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
+          )
+
+      elif apply_accel >= (
+        V25O_SNG_RELEASE_ACCEL if CS.out.standstill else V25L_ACCEL_ENTRY
+      ) and not propulsion_blocked:
+        target_offset = min(
+          V25L_ACCEL_OFFSET_MAX,
+          min(apply_accel, V25L_ACCEL_CAP) * t_lookup,
+        )
+
+        # Cross from regen to neutral before propulsion. The desired speed then
+        # rises only 0.02 m/s per 20 Hz update, matching the smooth earlier
+        # acceleration behavior without the V2.5N aEgo gate.
+        if self.v25l_speed_offset < 0.0:
+          self.v25l_speed_offset = min(
+            0.0,
+            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
+          )
+        elif target_offset > self.v25l_speed_offset:
+          self.v25l_speed_offset = min(
+            target_offset,
+            self.v25l_speed_offset + V25L_ACCEL_OFFSET_STEP_UP,
+          )
+        else:
+          self.v25l_speed_offset = max(
+            target_offset,
+            self.v25l_speed_offset - V25L_ACCEL_OFFSET_STEP_DOWN,
+          )
+
+      else:
+        # Near-neutral planner demand: command current speed. Release a negative
+        # offset quickly but smoothly; discard any residual positive offset.
+        if self.v25l_speed_offset < 0.0:
+          self.v25l_speed_offset = min(
+            0.0,
+            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
+          )
+        else:
+          self.v25l_speed_offset = 0.0
+
+      if self.v25o_stop_hold or sng_release_active:
+        # Stock stop and pump-release logs keep ACC_CMD at zero.
+        des_speed = 0.0
+      elif hydraulic_req:
+        # Never combine lowered 0x273 desired speed with hydraulic 0x271.
+        des_speed = CS.out.vEgo
+      else:
+        des_speed = max(0.0, CS.out.vEgo + self.v25l_speed_offset)
+
+      # Select the two independent 0x273 longitudinal mode bits explicitly.
+      # Stock-observed state table:
+      #   disabled                 = 0x00: IS_ACCEL=0, IS_DECEL=0
+      #   normal 0x01, including
+      #   lowered ACC_CMD regen    = 0x40: IS_ACCEL=1, IS_DECEL=0
+      #   moving 0x21 / crawl 0x31 = 0x20: IS_ACCEL=0, IS_DECEL=1
+      #   standstill 0x30          = 0x60: IS_ACCEL=1, IS_DECEL=1
+      #   0x30 pressure release    = 0x20 during the FC/04/C8 staging frames
+      if not enabled:
+        acc_cmd_is_accel = False
+        acc_cmd_is_decel = False
+      elif brake_state == 0x30:
+        acc_cmd_is_accel = True
+        acc_cmd_is_decel = True
+      elif brake_state in (0x21, 0x31) or sng_release_active:
+        acc_cmd_is_accel = False
+        acc_cmd_is_decel = True
+      else:
+        # Neutral 0x01 uses the normal 0x40 state even when ACC_CMD is slightly
+        # below vEgo for smooth engine/regen deceleration.
+        acc_cmd_is_accel = True
+        acc_cmd_is_decel = False
+
+      can_sends.append(  # Add ACC_CMD_HUD message
+        dnga_create_accel_command(  # Build 0x273 ACC command frame
+          self.packer,  # CAN packer
+          CS.cruise_speed,  # OP cruise set speed
+          CS.out.cruiseState.available,  # ACC ready/available bit
+          enabled,  # OP enabled state
+          lead,  # Lead visible flag
+          des_speed,  # Desired speed command
+          acc_cmd_is_accel,  # Explicit stock IS_ACCEL mode bit
+          acc_cmd_is_decel,  # Explicit stock IS_DECEL mode bit
+          CS.op_distance_val  # Follow distance setting
+        )
+      )
+
+      can_sends.append(  # Add ACC_BRAKE message
+        dnga_create_brake_command(  # Build 0x271 brake command
+          self.packer,  # CAN packer
+          brake_state,  # 0x00, 0x01, 0x21, 0x31, or 0x30
+          pump_reaction,  # 0.0 or -0.4
+          brake_mag,  # 200 or conservative 0x04xx value
+          (frame // 5) % 8  # ACC_BRAKE counter
+        )
+      )
+
+      can_sends.append(  # Add LKAS_HUD message
+        dnga_create_hud(  # Build 0x274 HUD command
+          self.packer,  # CAN packer
+          CS.out.cruiseState.available and CS.lkas_latch,  # LKAS ready state
+          enabled,  # LKAS engaged display state
+          left_line,  # Left lane visible
+          right_line,  # Right lane visible
+          self.stockLdw,  # Lane departure warning flag
+          CS.stock_fcw,  # Stock FCW state
+          CS.stock_aeb,  # Stock AEB state
+          CS.stock_adas_frontDepartureHUD,  # Front departure HUD state
+          CS.stock_lkc_off,  # LKC off state
+          CS.stock_fcw_off  # FCW off state
+        )
+      )
+
+    self.last_steer = apply_steer  # Store applied steering torque for next frame
+
+    new_actuators = actuators.copy()  # Copy actuator output object
+    new_actuators.steer = apply_steer / steer_max_interp  # Report actual normalized steering command
+
+    return new_actuators, can_sends  # Return actuator feedback and CAN messages

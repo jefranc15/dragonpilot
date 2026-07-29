@@ -1,0 +1,110 @@
+DNGA full mapping logger
+Passive/read-only: no CAN transmission and no car-file changes.
+Keep OP toggle OFF for stock/manual tests.
+Summary: /data/openpilot/dnga_full_mapping_summary_0719_065152.csv.gz
+Raw CAN: /data/openpilot/dnga_full_mapping_raw_0719_065152.csv.gz
+Bit changes: /data/openpilot/dnga_full_mapping_changes_0719_065152.csv.gz
+Automatic windows: 8 seconds before, 12 seconds after.
+Use ctl capture for guaranteed button/HUD capture.
+5.0s rows=101 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=0 bits=0 opLongUnexpected=no
+17.8s rows=199 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=yes raw=110099 bits=24693 opLongUnexpected=no
+28.7s rows=200 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+33.8s rows=243 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+38.8s rows=344 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+43.9s rows=445 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+48.9s rows=545 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+53.9s rows=645 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+58.9s rows=746 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+64.0s rows=847 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=no raw=110099 bits=24693 opLongUnexpected=no
+80.1s rows=857 speed=0.0 aEgo=0.000 gas=0.000 cruise=off brake=none event=yes raw=310099 bits=67791 opLongUnexpected=no
+100.5s rows=858 speed=1.8 aEgo=0.729 gas=0.000 cruise=off brake=none event=yes raw=410099 bits=92800 opLongUnexpected=no
+123.1s rows=859 speed=2.9 aEgo=-0.115 gas=0.115 cruise=off brake=none event=yes raw=510099 bits=141357 opLongUnexpected=no
+155.7s rows=860 speed=16.4 aEgo=0.048 gas=0.084 cruise=off brake=none event=yes raw=610099 bits=189061 opLongUnexpected=no
+190.0s rows=861 speed=17.5 aEgo=0.348 gas=0.126 cruise=off brake=none event=yes raw=710099 bits=239213 opLongUnexpected=no
+225.3s rows=862 speed=9.6 aEgo=0.801 gas=0.087 cruise=off brake=none event=yes raw=810099 bits=290771 opLongUnexpected=no
+263.8s rows=863 speed=97.6 aEgo=-0.092 gas=0.124 cruise=off brake=none event=yes raw=910099 bits=341499 opLongUnexpected=no
+304.0s rows=864 speed=30.5 aEgo=0.487 gas=0.000 cruise=on brake=none event=yes raw=1010099 bits=389239 opLongUnexpected=no
+343.4s rows=865 speed=39.0 aEgo=0.162 gas=0.000 cruise=on brake=none event=yes raw=1110099 bits=436092 opLongUnexpected=no
+381.5s rows=866 speed=79.1 aEgo=-0.047 gas=0.168 cruise=off brake=none event=yes raw=1210099 bits=486036 opLongUnexpected=no
+425.0s rows=867 speed=82.9 aEgo=-0.058 gas=0.153 cruise=off brake=none event=yes raw=1310099 bits=534602 opLongUnexpected=no
+467.9s rows=868 speed=88.5 aEgo=0.360 gas=0.248 cruise=off brake=none event=yes raw=1410099 bits=580583 opLongUnexpected=no
+509.2s rows=869 speed=46.8 aEgo=0.738 gas=0.256 cruise=off brake=none event=yes raw=1510099 bits=629416 opLongUnexpected=no
+552.9s rows=870 speed=59.0 aEgo=-0.058 gas=0.062 cruise=off brake=none event=yes raw=1610099 bits=676482 opLongUnexpected=no
+597.2s rows=871 speed=47.9 aEgo=-0.005 gas=0.119 cruise=off brake=none event=yes raw=1710099 bits=720452 opLongUnexpected=no
+639.4s rows=872 speed=39.5 aEgo=-0.478 gas=0.000 cruise=off brake=none event=yes raw=1810099 bits=769218 opLongUnexpected=no
+684.1s rows=873 speed=36.1 aEgo=-0.077 gas=0.116 cruise=off brake=none event=yes raw=1910099 bits=813841 opLongUnexpected=no
+725.9s rows=874 speed=42.6 aEgo=0.030 gas=0.130 cruise=off brake=none event=yes raw=2010099 bits=861807 opLongUnexpected=no
+769.8s rows=875 speed=57.2 aEgo=-0.532 gas=0.000 cruise=off brake=manual_brake event=yes raw=2110099 bits=910547 opLongUnexpected=no
+816.1s rows=876 speed=65.9 aEgo=-0.105 gas=0.103 cruise=off brake=none event=yes raw=2210099 bits=957686 opLongUnexpected=no
+863.8s rows=877 speed=36.7 aEgo=0.455 gas=0.000 cruise=on brake=none event=yes raw=2310099 bits=1009739 opLongUnexpected=no
+915.2s rows=878 speed=53.4 aEgo=0.018 gas=0.000 cruise=on brake=none event=yes raw=2410099 bits=1050327 opLongUnexpected=no
+961.5s rows=879 speed=59.4 aEgo=-0.904 gas=0.000 cruise=on brake=stock_acc_brake event=yes raw=2510099 bits=1101357 opLongUnexpected=no
+1011.3s rows=880 speed=23.4 aEgo=-0.127 gas=0.000 cruise=on brake=none event=yes raw=2610099 bits=1146059 opLongUnexpected=no
+1056.5s rows=881 speed=13.7 aEgo=-0.319 gas=0.000 cruise=off brake=none event=yes raw=2710099 bits=1190556 opLongUnexpected=no
+1098.8s rows=882 speed=30.5 aEgo=0.510 gas=0.165 cruise=off brake=none event=yes raw=2810099 bits=1231957 opLongUnexpected=no
+1140.4s rows=883 speed=30.8 aEgo=-0.339 gas=0.000 cruise=off brake=none event=yes raw=2910099 bits=1277119 opLongUnexpected=no
+1183.6s rows=884 speed=26.0 aEgo=0.329 gas=0.137 cruise=off brake=none event=yes raw=3010099 bits=1322295 opLongUnexpected=no
+1226.8s rows=885 speed=32.6 aEgo=-0.068 gas=0.047 cruise=off brake=none event=yes raw=3110099 bits=1368186 opLongUnexpected=no
+1269.7s rows=886 speed=25.0 aEgo=0.227 gas=0.000 cruise=on brake=none event=yes raw=3210099 bits=1412714 opLongUnexpected=no
+1313.3s rows=887 speed=25.0 aEgo=-0.070 gas=0.080 cruise=off brake=none event=yes raw=3310099 bits=1457826 opLongUnexpected=no
+1356.6s rows=888 speed=5.4 aEgo=0.265 gas=0.000 cruise=off brake=none event=yes raw=3410099 bits=1499390 opLongUnexpected=no
+1396.9s rows=889 speed=24.2 aEgo=1.188 gas=0.205 cruise=off brake=none event=yes raw=3510099 bits=1551291 opLongUnexpected=no
+1442.3s rows=890 speed=30.7 aEgo=-0.652 gas=0.000 cruise=on brake=stock_acc_brake event=yes raw=3610099 bits=1599609 opLongUnexpected=no
+1488.9s rows=891 speed=13.1 aEgo=-0.020 gas=0.153 cruise=off brake=none event=yes raw=3710099 bits=1647207 opLongUnexpected=no
+1533.7s rows=892 speed=30.9 aEgo=0.181 gas=0.143 cruise=off brake=none event=yes raw=3810099 bits=1692093 opLongUnexpected=no
+1574.4s rows=893 speed=5.2 aEgo=0.095 gas=0.000 cruise=off brake=manual_brake event=yes raw=3910099 bits=1729124 opLongUnexpected=no
+1607.9s rows=894 speed=2.2 aEgo=-0.249 gas=0.000 cruise=off brake=manual_brake event=yes raw=4010099 bits=1761169 opLongUnexpected=no
+1638.1s rows=895 speed=7.5 aEgo=0.250 gas=0.064 cruise=off brake=none event=yes raw=4110099 bits=1807255 opLongUnexpected=no
+1674.3s rows=896 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=manual_brake event=yes raw=4210099 bits=1833772 opLongUnexpected=no
+1705.5s rows=897 speed=7.1 aEgo=0.254 gas=0.000 cruise=off brake=manual_brake event=yes raw=4310099 bits=1876769 opLongUnexpected=no
+1741.1s rows=898 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=manual_brake event=yes raw=4410099 bits=1905664 opLongUnexpected=no
+1775.0s rows=899 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=yes raw=4510099 bits=1926334 opLongUnexpected=no
+1802.1s rows=900 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4510099 bits=1926334 opLongUnexpected=no
+1809.7s rows=901 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=yes raw=4610099 bits=1942945 opLongUnexpected=no
+1824.2s rows=902 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1829.2s rows=1002 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1834.2s rows=1102 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1839.2s rows=1202 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1844.2s rows=1302 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1849.2s rows=1402 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1854.3s rows=1503 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1859.3s rows=1604 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1864.3s rows=1704 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1869.3s rows=1804 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1874.3s rows=1904 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1879.4s rows=2005 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1884.4s rows=2105 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1889.4s rows=2206 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1894.4s rows=2306 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1899.5s rows=2407 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1904.5s rows=2508 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1909.6s rows=2609 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1914.6s rows=2710 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1919.6s rows=2810 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1924.7s rows=2911 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1929.7s rows=3011 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1934.7s rows=3112 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1939.8s rows=3213 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1944.8s rows=3313 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1949.8s rows=3413 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1954.8s rows=3514 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1959.8s rows=3614 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1964.9s rows=3715 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1969.9s rows=3816 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1974.9s rows=3916 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1980.0s rows=4017 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1985.0s rows=4117 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1990.0s rows=4218 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+1995.1s rows=4319 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+2000.1s rows=4419 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+2005.1s rows=4519 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+2010.1s rows=4620 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+2015.1s rows=4720 speed=-0.0 aEgo=-0.000 gas=0.000 cruise=off brake=none event=no raw=4610099 bits=1942945 opLongUnexpected=no
+
+Logger stopped cleanly.
+Summary rows: 4783
+Raw CAN frames: 4610099
+CAN bit changes: 1942945
+Summary: /data/openpilot/dnga_full_mapping_summary_0719_065152.csv.gz
+Raw CAN: /data/openpilot/dnga_full_mapping_raw_0719_065152.csv.gz
+Bit changes: /data/openpilot/dnga_full_mapping_changes_0719_065152.csv.gz

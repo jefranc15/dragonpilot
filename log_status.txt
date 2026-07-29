@@ -1,0 +1,5 @@
+nohup: ignoring input
+LOG: /data/openpilot/v25l_0725_130417.csv
+
+Stopping logger...
+DONE: /data/openpilot/v25l_0725_130417.csv.gz (631.9 KB)

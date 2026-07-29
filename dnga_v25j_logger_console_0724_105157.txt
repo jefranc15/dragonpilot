@@ -1,0 +1,25 @@
+DNGA V2.5J standalone logger started
+summary:  /data/openpilot/dnga_v25j_summary_0724_105158.csv.gz
+selected: /data/openpilot/dnga_v25j_selected_can_0724_105158.csv.gz
+raw:      /data/openpilot/dnga_v25j_raw_events_0724_105158.csv.gz
+running 11s rows=12 selected=16542 raw=62867 events=1
+running 24s rows=14 selected=34346 raw=132073 events=2
+running 43s rows=16 selected=62252 raw=240503 events=4
+running 55s rows=17 selected=80172 raw=240503 events=4
+running 66s rows=18 selected=94867 raw=240503 events=4
+running 84s rows=20 selected=120657 raw=341190 events=6
+running 95s rows=21 selected=137413 raw=405638 events=7
+running 110s rows=22 selected=158411 raw=486270 events=8
+running 127s rows=23 selected=184353 raw=585916 events=9
+running 149s rows=24 selected=215924 raw=707479 events=10
+running 175s rows=25 selected=253663 raw=852608 events=11
+running 206s rows=26 selected=299859 raw=1029839 events=12
+running 246s rows=27 selected=357331 raw=1250940 events=13
+running 294s rows=28 selected=428448 raw=1523559 events=14
+running 355s rows=29 selected=516708 raw=1864252 events=15
+running 429s rows=30 selected=624422 raw=2279649 events=16
+DNGA V2.5J logger stopped cleanly
+Upload these three files:
+/data/openpilot/dnga_v25j_summary_0724_105158.csv.gz
+/data/openpilot/dnga_v25j_selected_can_0724_105158.csv.gz
+/data/openpilot/dnga_v25j_raw_events_0724_105158.csv.gz

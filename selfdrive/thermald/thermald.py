@@ -33,6 +33,7 @@ NetworkStrength = log.DeviceState.NetworkStrength
 CURRENT_TAU = 15.   # 15s time constant
 TEMP_TAU = 5.   # 5s time constant
 DISCONNECT_TIMEOUT = 5.  # wait 5 seconds before going offroad after disconnect so you get an alert
+IGNITION_STARTUP_DELAY = 5.  # require stable ignition before starting onroad processes
 PANDA_STATES_TIMEOUT = int(1000 * 2.5 * DT_TRML)  # 2.5x the expected pandaState frequency
 
 ThermalBand = namedtuple("ThermalBand", ['min_temp', 'max_temp'])
@@ -280,6 +281,8 @@ def thermald_thread(end_event, hw_queue):
   handle_fan = None
   is_uno = False
   engaged_prev = False
+  last_panda_states_ts = None
+  ignition_on_since = None
 
   power_monitor = PowerMonitoring()
 
@@ -322,6 +325,7 @@ def thermald_thread(end_event, hw_queue):
       dp_fan_mode, dp_fan_mode_last = param_get_if_updated("dp_fan_mode", "int", dp_fan_mode, dp_fan_mode_last)
       last_modified = modified
     sm.update(PANDA_STATES_TIMEOUT)
+    now = sec_since_boot()
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -329,6 +333,7 @@ def thermald_thread(end_event, hw_queue):
     msg = read_thermal(thermal_config)
 
     if sm.updated['pandaStates'] and len(pandaStates) > 0:
+      last_panda_states_ts = now
 
       # Set ignition based on any panda connected
       onroad_conditions["ignition"] = any(ps.ignitionLine or ps.ignitionCan for ps in pandaStates if ps.pandaType != log.PandaState.PandaType.unknown)
@@ -352,6 +357,31 @@ def thermald_thread(end_event, hw_queue):
           cloudlog.info("Setting up EON fan handler")
           setup_eon_fan()
           handle_fan = handle_fan_eon
+    elif sm.updated['pandaStates']:
+      # boardd can briefly publish an empty list during a panda reconnect.
+      # Preserve an existing onroad session for DISCONNECT_TIMEOUT, but do not
+      # allow a new onroad session to start from the old ignition value.
+      ignition_on_since = None
+
+    # If boardd stops publishing completely after panda USB/power loss, force
+    # ignition off once the last valid pandaStates message is stale.
+    panda_states_stale = last_panda_states_ts is None or (now - last_panda_states_ts) > DISCONNECT_TIMEOUT
+    if panda_states_stale:
+      if onroad_conditions["ignition"]:
+        cloudlog.warning("pandaStates stale; forcing ignition off")
+      onroad_conditions["ignition"] = False
+      in_car = False
+
+    # Do not enter onroad during the IGN-ON -> START/cranking transition.
+    # Any ignition drop, empty panda list, or panda update timeout restarts the
+    # full delay. An already-started drive keeps the disconnect grace above.
+    panda_states_fresh_for_start = sm.updated['pandaStates'] and len(pandaStates) > 0
+    if onroad_conditions["ignition"] and panda_states_fresh_for_start:
+      if ignition_on_since is None:
+        ignition_on_since = now
+        cloudlog.info(f"ignition detected; delaying onroad start by {IGNITION_STARTUP_DELAY:.1f}s")
+    else:
+      ignition_on_since = None
 
     try:
       last_hw_state = hw_queue.get_nowait()
@@ -432,7 +462,8 @@ def thermald_thread(end_event, hw_queue):
       set_offroad_alert_if_changed("Offroad_StorageMissing", missing)
 
     # Handle offroad/onroad transition
-    should_start = all(onroad_conditions.values())
+    ignition_stable = ignition_on_since is not None and (now - ignition_on_since) >= IGNITION_STARTUP_DELAY
+    should_start = all(onroad_conditions.values()) and (started_ts is not None or ignition_stable)
     # dp - check usb_present to fix not going offroad on "EON/LEON + battery - Comma Power"
     if dp_no_offroad_fix:
       should_start = should_start and HARDWARE.get_usb_present()

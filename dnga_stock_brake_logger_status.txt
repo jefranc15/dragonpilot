@@ -1,0 +1,18 @@
+DNGA stock/manual brake logger
+Passive only: does not send CAN or modify car files.
+OP toggle should remain OFF for this test.
+Summary: /data/openpilot/dnga_stock_brake_summary_0715_162723.csv.gz
+Raw event CAN: /data/openpilot/dnga_stock_brake_raw_0715_162723.csv.gz
+Raw CAN includes 5 s before and 8 s after brake events.
+5.0s rows=101 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+10.0s rows=201 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+15.0s rows=301 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+20.0s rows=401 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+25.1s rows=502 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+30.1s rows=602 speed=0.0 aEgo=0.000 class=none rx271= mag= event=no raw=0 opLongUnexpected=no
+
+Logger stopped cleanly.
+Summary rows: 700
+Raw CAN frames saved: 0
+Summary: /data/openpilot/dnga_stock_brake_summary_0715_162723.csv.gz
+Raw event CAN: /data/openpilot/dnga_stock_brake_raw_0715_162723.csv.gz

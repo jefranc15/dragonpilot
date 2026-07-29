@@ -1,0 +1,44 @@
+DNGA V2.5J standalone logger started
+summary:  /data/openpilot/dnga_v25j_summary_0724_131342.csv.gz
+selected: /data/openpilot/dnga_v25j_selected_can_0724_131342.csv.gz
+raw:      /data/openpilot/dnga_v25j_raw_events_0724_131342.csv.gz
+running 11s rows=10 selected=17123 raw=64685 events=1
+running 28s rows=12 selected=40795 raw=104920 events=2
+running 46s rows=14 selected=67114 raw=149379 events=3
+running 64s rows=16 selected=92395 raw=149379 events=3
+running 81s rows=18 selected=117591 raw=246778 events=5
+running 94s rows=19 selected=137144 raw=246778 events=5
+running 107s rows=20 selected=155307 raw=317278 events=6
+running 124s rows=21 selected=180765 raw=414810 events=7
+running 148s rows=22 selected=215472 raw=547632 events=8
+running 179s rows=23 selected=261254 raw=547632 events=8
+running 209s rows=24 selected=303517 raw=547632 events=8
+running 236s rows=25 selected=342869 raw=547632 events=8
+running 262s rows=26 selected=379500 raw=547632 events=8
+running 285s rows=27 selected=413264 raw=547632 events=8
+running 307s rows=28 selected=444932 raw=670806 events=9
+running 338s rows=29 selected=490587 raw=845030 events=10
+running 383s rows=30 selected=557122 raw=1098865 events=11
+running 449s rows=31 selected=653835 raw=1467413 events=12
+running 545s rows=32 selected=657488 raw=1471066 events=13
+running 562s rows=35 selected=682640 raw=1566298 events=15
+running 573s rows=36 selected=699587 raw=1630875 events=16
+running 590s rows=37 selected=723722 raw=1722920 events=17
+running 613s rows=38 selected=758540 raw=1722920 events=17
+running 637s rows=39 selected=792281 raw=1853811 events=18
+running 670s rows=40 selected=841606 raw=2041935 events=19
+running 719s rows=41 selected=913915 raw=2317769 events=20
+running 789s rows=42 selected=1016555 raw=2710490 events=21
+running 888s rows=43 selected=1020330 raw=2714265 events=22
+running 901s rows=46 selected=1040317 raw=2731442 events=22
+running 914s rows=49 selected=1058099 raw=2731442 events=22
+running 932s rows=52 selected=1084709 raw=2779945 events=23
+running 953s rows=54 selected=1115840 raw=2899871 events=25
+running 971s rows=55 selected=1141371 raw=2997618 events=26
+running 996s rows=56 selected=1178940 raw=3140872 events=27
+running 1033s rows=57 selected=1233764 raw=3349996 events=28
+DNGA V2.5J logger stopped cleanly
+Upload these three files:
+/data/openpilot/dnga_v25j_summary_0724_131342.csv.gz
+/data/openpilot/dnga_v25j_selected_can_0724_131342.csv.gz
+/data/openpilot/dnga_v25j_raw_events_0724_131342.csv.gz

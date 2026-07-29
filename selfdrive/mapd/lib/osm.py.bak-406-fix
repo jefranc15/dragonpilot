@@ -1,0 +1,56 @@
+import overpy
+import numpy as np
+from selfdrive.mapd.lib.geo import R
+
+
+OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+]
+
+
+def create_way(way_id, node_ids, from_way):
+  """
+  Creates and OSM Way with the given `way_id` and list of `node_ids`, copying attributes and tags from `from_way`
+  """
+  return overpy.Way(way_id, node_ids=node_ids, attributes={}, result=from_way._result,
+                    tags=from_way.tags)
+
+
+class OSM():
+  def __init__(self):
+    self.apis = [overpy.Overpass(url=url) for url in OVERPASS_URLS]
+
+  def fetch_road_ways_around_location(self, lat, lon, radius):
+    bbox_angle = np.degrees(radius / R)
+
+    south = lat - bbox_angle
+    west = lon - bbox_angle
+    north = lat + bbox_angle
+    east = lon + bbox_angle
+
+    # More standard Overpass QL form:
+    # way["highway"](bbox);
+    q = f"""
+[out:json][timeout:25];
+(
+  way
+    ["highway"]
+    ["highway"!~"^(footway|path|corridor|bridleway|steps|cycleway|construction|bus_guideway|escape|service|track)$"]
+    ({south},{west},{north},{east});
+);
+(._;>;);
+out body;
+"""
+
+    for api in self.apis:
+      try:
+        ways = api.query(q).ways
+        print(f"OSM: got {len(ways)} ways with radius {radius}", flush=True)
+        return ways
+      except Exception as e:
+        print(f"OSM: query failed on {api.url}: {e}", flush=True)
+
+    return []

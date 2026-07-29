@@ -22,7 +22,10 @@ class CarState(CarStateBase):
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
     self.prev_distance_btn = False
-    self.op_distance_val = 2
+    # Local enum used by dngacan/carcontroller:
+    #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
+    # Start at the neutral 2-bar setting after reboot.
+    self.op_distance_val = 1
 
     self.rising_edge_since = 0
     self.last_frame = time() 
@@ -37,6 +40,14 @@ class CarState(CarStateBase):
     self.stock_acc_cmd = 0
     self.stock_brake_mag = 0
     self.stock_acc_set_speed = 0
+
+    # ACC MAIN on this Yaris Cross is a momentary button on PCM_BUTTONS
+    # (0x208 byte 0 bit 7). Because openpilot generates ACC_CMD_HUD/0x273,
+    # availability must be held locally instead of being read back from
+    # SET_ME_1_2, which would create a false-state feedback loop.
+    self.acc_main_button = False
+    self.prev_acc_main_button = False
+    self.acc_main_latch = False
 
     # Real accelerator pedal found on raw CAN: bus 1, addr 0x277, bytes 1-2 big endian
     self.gas_raw_277 = 0
@@ -98,7 +109,20 @@ class CarState(CarStateBase):
       self.lkas_latch = not self.lkas_latch
       self.lkas_btn_rising_edge_seen = False
 
-    ret.cruiseState.available = True
+    # ACC_MAIN is a momentary pulse. Toggle a persistent software latch
+    # on its rising edge. Do not read availability back from 0x273 because
+    # this port transmits 0x273 itself.
+    self.acc_main_button = bool(cp.vl["PCM_BUTTONS"]["ACC_MAIN"])
+
+    if self.acc_main_button and not self.prev_acc_main_button:
+      self.acc_main_latch = not self.acc_main_latch
+
+      # Turning ACC MAIN off always disengages cruise immediately.
+      if not self.acc_main_latch:
+        self.is_cruise_latch = False
+
+    self.prev_acc_main_button = self.acc_main_button
+    ret.cruiseState.available = self.acc_main_latch
 
     distance_btn = cp.vl["BUTTONS"]["DISTANCE_BTN"]
     if distance_btn and not self.prev_distance_btn:
@@ -112,6 +136,11 @@ class CarState(CarStateBase):
         events.append(be)
         ret.buttonEvents = events
     self.prev_distance_btn = distance_btn
+
+    # Planner-facing field used by this branch's long_mpc.py.
+    # This was previously never populated, so the MPC always fell into its
+    # default/farthest-distance branch regardless of the displayed bars.
+    ret.distanceLines = self.op_distance_val + 1
 
     minus_button = bool(cp.vl["PCM_BUTTONS"]["SET_MINUS"])
     plus_button = bool(cp.vl["PCM_BUTTONS"]["RES_PLUS"])
@@ -150,7 +179,7 @@ class CarState(CarStateBase):
           self.cruise_speed = kph * CV.KPH_TO_MS
           self.dt -= SEC_HOLD_TO_STEP_SPEED
 
-    if not self.is_cruise_latch:
+    if self.acc_main_latch and not self.is_cruise_latch:
       if self.is_plus_btn_latch and not plus_button:
         self.is_cruise_latch = True
       elif self.is_minus_btn_latch and not minus_button:
@@ -168,14 +197,16 @@ class CarState(CarStateBase):
 
     self.cruise_speed = clip(self.cruise_speed, 30 * CV.KPH_TO_MS, 125 * CV.KPH_TO_MS)
     
-    # OP generates the ACC frames now, so OP dictates UI state
+    # ACC MAIN controls availability; SET/RES controls engagement.
     ret.cruiseState.speed = self.cruise_speed
     ret.cruiseState.standstill = ret.vEgoRaw < 0.01
-    ret.cruiseState.nonAdaptive = False 
-    ret.cruiseState.enabled = self.is_cruise_latch
-    
-    if not ret.cruiseState.available:
+    ret.cruiseState.nonAdaptive = False
+
+    if not self.acc_main_latch:
       self.is_cruise_latch = False
+
+    ret.cruiseState.available = self.acc_main_latch
+    ret.cruiseState.enabled = self.is_cruise_latch
 
     ret.leftBlinker = bool(cp.vl["METER_CLUSTER"]["LEFT_SIGNAL"])
     ret.rightBlinker = bool(cp.vl["METER_CLUSTER"]["RIGHT_SIGNAL"])
@@ -217,7 +248,7 @@ class CarState(CarStateBase):
         ("STEER_ANGLE", "STEERING_MODULE", 0.),
         ("MAIN_TORQUE", "STEERING_MODULE", 0.),
         ("STEERING_TORQUE", "EPS_SHAFT_TORQUE", 0.),
-        ("ACC_RDY", "PCM_BUTTONS", 0),
+        ("ACC_MAIN", "PCM_BUTTONS", 0),
         ("GAS_PRESSED", "PCM_BUTTONS_HYBRID", 0),
         ("SET_MINUS", "PCM_BUTTONS", 0),
         ("SET_MINUS", "PCM_BUTTONS_HYBRID", 0),

@@ -1,0 +1,314 @@
+from selfdrive.car import make_can_msg
+from selfdrive.car.dnga.dngacan import (
+  create_can_steer_command,
+  dnga_create_accel_command,
+  dnga_create_brake_command,
+  dnga_create_hud,
+)
+from selfdrive.car.dnga.values import DBC, NOT_CAN_CONTROLLED
+from opendbc.can.packer import CANPacker
+from common.numpy_fast import clip, interp
+from selfdrive.config import Conversions as CV
+
+try:
+  from common.features import Features
+except ImportError:
+  class Features:
+    def has(self, feature_name):
+      return False
+
+
+def apply_dnga_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, blinkerOn, LIMITS):
+  reduced_torque_mult = 10 if blinkerOn else 1.5
+
+  driver_max_torque = 255 + driver_torque * reduced_torque_mult
+  driver_min_torque = -255 - driver_torque * reduced_torque_mult
+
+  max_steer_allowed = clip(driver_max_torque, 0, 255)
+  min_steer_allowed = clip(driver_min_torque, -255, 0)
+
+  apply_torque = clip(apply_torque, min_steer_allowed, max_steer_allowed)
+
+  if apply_torque_last > 0:
+    apply_torque = clip(
+      apply_torque,
+      max(apply_torque_last - LIMITS.STEER_DELTA_DOWN, -LIMITS.STEER_DELTA_UP),
+      apply_torque_last + LIMITS.STEER_DELTA_UP
+    )
+  else:
+    apply_torque = clip(
+      apply_torque,
+      apply_torque_last - LIMITS.STEER_DELTA_UP,
+      min(apply_torque_last + LIMITS.STEER_DELTA_DOWN, LIMITS.STEER_DELTA_UP)
+    )
+
+  return int(round(float(apply_torque)))
+
+
+class CarControllerParams():
+  def __init__(self, CP):
+    self.STEER_BP = CP.lateralParams.torqueBP
+    self.STEER_LIM_TORQ = CP.lateralParams.torqueV
+
+    if CP.carFingerprint in NOT_CAN_CONTROLLED:
+      self.STEER_DELTA_UP = 20
+      self.STEER_DELTA_DOWN = 30
+    else:
+      self.STEER_DELTA_UP = 22
+      self.STEER_DELTA_DOWN = 35
+
+
+class CarController():
+  def __init__(self, dbc_name, CP, VM):
+    self.last_steer = 0
+    self.steer_rate_limited = False
+
+    self.params = CarControllerParams(CP)
+    self.packer = CANPacker(DBC[CP.carFingerprint]['pt'])
+
+    f = Features()
+    self.need_clear_engine = f.has("ClearCode")
+
+    self.stockLdw = False
+
+    self.prev_enabled = False
+    self.block_brake_until_frame = 0
+    self.brake_release_until_frame = 0
+    self.brake_req_counter = 0
+    self.brake_release_counter = 0
+    self.brake_active = False
+    self.brake_active = False
+
+  def update(self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
+             hud_alert, left_line, right_line, lead,
+             left_lane_depart, right_lane_depart, dragonconf):
+
+    can_sends = []  # Create the list that will hold all CAN messages for this control cycle
+
+    # -----------------------------
+    # Steering
+    # -----------------------------
+    steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)  # Get speed-based steering torque limit
+    steer_max_interp = max(1.0, steer_max_interp)  # Avoid divide-by-zero if the torque table returns 0
+
+    new_steer = int(round(actuators.steer * steer_max_interp))  # Convert normalized OP steer command into raw torque
+
+    isBlinkerOn = CS.out.leftBlinker != CS.out.rightBlinker  # True when only one blinker is active
+
+    apply_steer = apply_dnga_steer_torque_limits(  # Apply steering torque and rate limits
+      new_steer,  # Requested raw steering torque
+      self.last_steer,  # Last applied raw steering torque
+      CS.out.steeringTorqueEps,  # Driver torque from EPS
+      isBlinkerOn,  # Blinker state for driver override allowance
+      self.params  # Steering limit parameters
+    )
+
+    self.steer_rate_limited = (new_steer != apply_steer) and (apply_steer != 0)  # Mark whether steering was rate limited
+    self.steer_rate_limited &= not CS.out.steeringPressed  # Do not show rate limit if driver is steering
+
+    # -----------------------------
+    # Longitudinal base values
+    # -----------------------------
+    apply_accel = clip(actuators.accel, -3.0, 1.5)  # Clamp openpilot accel request
+    apply_brake = -apply_accel if apply_accel < 0.0 else 0.0  # Convert negative accel into positive brake amount
+
+    if enabled and not self.prev_enabled:  # Detect the first frame after OP engagement
+      self.block_brake_until_frame = frame + 200  # V2.5: block brake request for about 2 seconds after SET/engage
+
+    self.prev_enabled = enabled  # Save enabled state for the next control cycle
+
+    # V2.5c brake-only safety: do not send diagnostic clear-code frames automatically.
+    if False and self.need_clear_engine:
+      can_sends.append(make_can_msg(2015, b'\x01\x04\x00\x00\x00\x00\x00\x00', 0))
+
+    # -----------------------------
+    # Steering command, 50 Hz
+    # -----------------------------
+    if (frame % 2) == 0:  # Send steering every 2 frames
+      steer_req = (enabled or self.stockLdw) and CS.lkas_latch  # Request steering when OP/LDA is active and LKAS latch is on
+      can_sends.append(  # Add steering CAN message
+        create_can_steer_command(  # Build STEERING_LKAS frame
+          self.packer,  # CAN packer
+          apply_steer,  # Raw torque command
+          steer_req,  # Steering request bit
+          (frame // 2) % 16  # Steering counter
+        )
+      )
+
+    # -----------------------------
+    # Longitudinal / HUD, 20 Hz
+    # -----------------------------
+    if (frame % 5) == 0:  # Send ACC/HUD messages every 5 frames
+
+      boost = interp(CS.out.vEgo, [0.2, 0.5, 18.0, 23.0], [0.0, 1.0, 1.0, 1.0])  # Reduce low-speed accel contribution
+
+      # ACC_CMD_HUD appears to need a stronger target during acceleration.
+      # For positive OP accel, command toward the cruise set speed instead of only
+      # current speed + small accel delta.
+      if enabled and actuators.accel > 0.05:
+        des_speed = max(CS.out.vEgo, CS.cruise_speed)
+      else:
+        base_speed = getattr(actuators, 'speed', CS.out.vEgo)
+        des_speed = max(0.0, base_speed + clip(actuators.accel * boost, -1.0, 0.0))
+
+      # -----------------------------
+      # ACC_BRAKE / 0x271 state map from logs
+      # -----------------------------
+      # 0x00 + pump 0.0 + mag 200 = disabled / neutral / no brake
+      # 0x01 + pump 0.0 + mag 200 = enabled / ready / no brake
+      # 0x21 + pump -0.4 + mag 0x04xx = active braking request
+      # 0x30 and 0x31 are likely stop-hold states; do not use them yet
+
+      if not enabled:  # OP is not engaged
+        brake_state = 0x00  # Use disabled/neutral brake state
+        pump_reaction = 0.0  # No pump reaction
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
+
+      else:  # OP is engaged but not necessarily braking
+        brake_state = 0x01  # Use enabled/no-brake state found in logs
+        pump_reaction = 0.0  # No pump reaction while not braking
+        brake_mag = 200  # Stock neutral magnitude 0x00C8
+
+      # -----------------------------
+      # Stock-like moving brake scale, v2.5 without lead or overspeed braking
+      # -----------------------------
+      #
+      # Goal:
+      #   - avoid 0x01 / 0x21 chatter
+      #   - avoid holding brake after OP asks to accelerate
+      #   - use only original weak known-safe brake magnitude
+      #   - no 1398, no 1646, no 0x31, no 0x30
+
+      # V2.5 no-overspeed: braking only follows OP's requested negative accel.
+      # Removed overspeed correction because it may hold speed below set speed
+      # or create unnecessary brake/accel fighting.
+
+      # V2.5 no-overspeed: brake only when OP asks for negative accel.
+      brake_request = apply_brake
+
+      # V2.5b: cut-in smoother.
+      # When a new lead suddenly appears at higher speed, avoid immediate 0x21 brake bite.
+      prev_lead_visible = getattr(self, "prev_lead_visible", False)
+      lead_just_appeared = lead and not prev_lead_visible
+      self.prev_lead_visible = lead
+
+      if lead_just_appeared and CS.out.vEgo > 7.0:  # above ~25 kph
+        self.cut_in_soft_until_frame = frame + 50  # ~0.5s at 100Hz
+
+      cut_in_soft_active = frame < getattr(self, "cut_in_soft_until_frame", 0)
+
+      # During new-lead cut-in soft window, block sudden brake bite unless decel is urgent.
+      cut_in_brake_ok = (
+        not cut_in_soft_active or
+        (brake_request >= 0.65 and CS.out.aEgo < -0.10)
+      )
+
+
+      # Keep the anti-jerk aEgo guard for normal braking, but allow brake if
+      # OP/overspeed is asking for a clearly stronger sustained decel.
+      accel_guard_ok = CS.out.aEgo < 0.05  # V2.5: strict anti-jerk guard
+
+      brake_allowed = (
+        enabled and
+        CS.out.cruiseState.enabled and
+        not CS.out.standstill and
+        frame > self.block_brake_until_frame and
+        CS.out.vEgo > 1.0 and  # V2.4: allow 0x21 down to ~3.6 kph
+        accel_guard_ok and
+        cut_in_brake_ok and  # V2.5b: avoid sudden 0x21 bite on new lead cut-in
+        not CS.out.gasPressed and
+        not CS.out.brakePressed
+      )
+
+      if brake_allowed:
+        if brake_request > 0.30:
+          self.brake_req_counter = min(self.brake_req_counter + 1, 10)
+          self.brake_release_counter = 0
+        elif brake_request < 0.08:
+          self.brake_release_counter = min(self.brake_release_counter + 1, 10)
+          self.brake_req_counter = 0
+        # between 0.08 and 0.18: hold current active state briefly
+      else:
+        self.brake_req_counter = 0
+        self.brake_release_counter = 0
+        self.brake_active = False
+
+      # Engage after ~0.20s at 20 Hz, release after ~0.10s.
+      if not self.brake_active and self.brake_req_counter >= 4:
+        self.brake_active = True
+      elif self.brake_active and self.brake_release_counter >= 2:
+        self.brake_active = False
+
+      decel_req = brake_allowed and self.brake_active
+
+      if decel_req:
+        brake_state = 0x21
+        pump_reaction = -0.4
+
+        # V1.6: gentlest stock-like 0x21 entry.
+        # Keep pump -0.4 / 0xFC, but use fixed 1219 to reduce brake bite.
+        # V2.4:
+        # Same pump stage only: pump stays 0xFC / -0.4.
+        # 1219 = gentle
+        # 1215 = medium within gentle pump stage
+        # 1212 = strongest tested within gentle pump stage
+        # V2.5b:
+        # Keep V2.3/V2.5 low-speed brake.
+        # Do not use 1212 at highway speed; it caused jerk.
+        # Only allow mild 1215 at higher speed after the car is already decelerating.
+        if CS.out.vEgo < 2.2:
+          brake_mag = 1212
+        elif CS.out.vEgo < 2.8:
+          brake_mag = 1215
+        elif brake_request >= 0.75 and CS.out.aEgo < -0.15:
+          brake_mag = 1215
+        else:
+          brake_mag = 1219
+
+      brake_amt_for_hud = clip(brake_request, 0.0, 0.60) if decel_req else 0.0
+
+      can_sends.append(  # Add ACC_CMD_HUD message
+        dnga_create_accel_command(  # Build 0x273 ACC command frame
+          self.packer,  # CAN packer
+          CS.cruise_speed,  # OP cruise set speed
+          CS.out.cruiseState.available,  # ACC ready/available bit
+          enabled,  # OP enabled state
+          lead,  # Lead visible flag
+          des_speed,  # Desired speed command
+          brake_amt_for_hud,  # Brake amount used for IS_DECEL/IS_ACCEL
+          CS.op_distance_val  # Follow distance setting
+        )
+      )
+
+      can_sends.append(  # Add ACC_BRAKE message
+        dnga_create_brake_command(  # Build 0x271 brake command
+          self.packer,  # CAN packer
+          brake_state,  # 0x00, 0x01, or 0x21
+          pump_reaction,  # 0.0 or -0.4
+          brake_mag,  # 200 or conservative 0x04xx value
+          (frame // 5) % 8  # ACC_BRAKE counter
+        )
+      )
+
+      can_sends.append(  # Add LKAS_HUD message
+        dnga_create_hud(  # Build 0x274 HUD command
+          self.packer,  # CAN packer
+          CS.out.cruiseState.available and CS.lkas_latch,  # LKAS ready state
+          enabled,  # LKAS engaged display state
+          left_line,  # Left lane visible
+          right_line,  # Right lane visible
+          self.stockLdw,  # Lane departure warning flag
+          CS.stock_fcw,  # Stock FCW state
+          CS.stock_aeb,  # Stock AEB state
+          CS.stock_adas_frontDepartureHUD,  # Front departure HUD state
+          CS.stock_lkc_off,  # LKC off state
+          CS.stock_fcw_off  # FCW off state
+        )
+      )
+
+    self.last_steer = apply_steer  # Store applied steering torque for next frame
+
+    new_actuators = actuators.copy()  # Copy actuator output object
+    new_actuators.steer = apply_steer / steer_max_interp  # Report actual normalized steering command
+
+    return new_actuators, can_sends  # Return actuator feedback and CAN messages

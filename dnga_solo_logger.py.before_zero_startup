@@ -1,0 +1,1416 @@
+#!/usr/bin/env python3
+from __future__ import print_function
+
+import csv
+import gzip
+import json
+import os
+import signal
+import time
+from collections import deque
+from datetime import datetime
+
+import cereal.messaging as messaging
+
+try:
+  from cereal.services import service_list
+except Exception:
+  service_list = {}
+
+
+VERSION = "3.0-solo"
+BASE = "/data/openpilot"
+
+RATE_HZ = 20.0
+STARTUP_CAPTURE_SECONDS = 90.0
+PRE_EVENT_SECONDS = 6.0
+POST_EVENT_SECONDS = 12.0
+EVENT_COOLDOWN_SECONDS = 3.0
+MAX_PREBUFFER_FRAMES = 60000
+
+SERVICES_WANTED = [
+  "carState",
+  "carControl",
+  "controlsState",
+  "radarState",
+  "longitudinalPlan",
+  "liveParameters",
+  "deviceState",
+  "managerState",
+]
+
+# Selected frames are recorded continuously at their original CAN rate.
+# Full-bus CAN is only recorded during startup and bounded event windows.
+WATCH_IDS = {
+  0x18E: "GAS_PEDAL",
+  0x18F: "GAS_PEDAL_2",
+  0x1A0: "WHEEL_SPEED",
+  0x1AB: "BUTTONS",
+  0x1C0: "EPS_SHAFT_TORQUE",
+  0x1D0: "STEERING_CMD",
+  0x207: "PCM_BUTTONS_HYBRID",
+  0x208: "PCM_BUTTONS",
+  0x20C: "TRANSMISSION",
+  0x260: "WHEEL_SPEED_CLEAN",
+  0x270: "ADAS_AEB",
+  0x271: "ACC_BRAKE",
+  0x273: "ACC_CMD_HUD",
+  0x274: "LKAS_HUD",
+}
+
+STOP_REQUESTED = False
+
+
+def request_stop(signum, frame):
+  global STOP_REQUESTED
+  STOP_REQUESTED = True
+
+
+def get_path(obj, path, default=None):
+  try:
+    value = obj
+    for part in path.split("."):
+      value = getattr(value, part)
+    return value
+  except Exception:
+    return default
+
+
+def first_value(obj, paths, default=None):
+  for path in paths:
+    value = get_path(obj, path, None)
+    if value is not None:
+      return value
+  return default
+
+
+def as_float(value, default=float("nan")):
+  try:
+    return float(value)
+  except Exception:
+    return default
+
+
+def as_bool(value, default=False):
+  try:
+    return bool(value)
+  except Exception:
+    return default
+
+
+def as_text(value, default=""):
+  try:
+    return str(value)
+  except Exception:
+    return default
+
+
+def available_services():
+  if not service_list:
+    return [
+      "carState",
+      "carControl",
+      "controlsState",
+      "radarState",
+      "liveParameters",
+    ]
+
+  output = []
+  for name in SERVICES_WANTED:
+    try:
+      if name in service_list:
+        output.append(name)
+    except Exception:
+      pass
+  return output
+
+
+def sm_get(sm, name):
+  try:
+    return sm[name]
+  except Exception:
+    return None
+
+
+def sm_alive(sm, name):
+  try:
+    return bool(sm.alive[name])
+  except Exception:
+    return False
+
+
+def open_socket(name):
+  try:
+    return messaging.sub_sock(name, conflate=False)
+  except TypeError:
+    return messaging.sub_sock(name)
+
+
+def recv_one(sock):
+  try:
+    return messaging.recv_one_or_none(sock)
+  except Exception:
+    return None
+
+
+def to_bytes(value):
+  try:
+    return bytes(value)
+  except Exception:
+    try:
+      return bytes(bytearray(ord(x) for x in value))
+    except Exception:
+      return b""
+
+
+def signed_byte(value):
+  return value - 256 if value >= 128 else value
+
+
+def bit(data, byte_index, bit_index):
+  try:
+    return (data[byte_index] >> bit_index) & 1
+  except Exception:
+    return 0
+
+
+def dnga_checksum(address, data_without_checksum):
+  return (address + 8 + 1 + 2 + sum(data_without_checksum)) & 0xFF
+
+
+def message_log_ns(msg, fallback_ns):
+  try:
+    value = int(msg.logMonoTime)
+    return value if value > 0 else fallback_ns
+  except Exception:
+    return fallback_ns
+
+
+def drain_socket(sock, field_name, direction, start_ns, cache):
+  output = []
+
+  while True:
+    msg = recv_one(sock)
+    if msg is None:
+      break
+
+    recv_ns = time.monotonic_ns()
+    log_ns = message_log_ns(msg, recv_ns)
+
+    try:
+      frames = getattr(msg, field_name)
+    except Exception:
+      continue
+
+    wall = datetime.now().isoformat()
+    original_t = (log_ns - start_ns) / 1e9
+    received_t = (recv_ns - start_ns) / 1e9
+
+    for frame in frames:
+      try:
+        address = int(frame.address)
+        bus = int(frame.src)
+        raw = to_bytes(frame.dat)
+      except Exception:
+        continue
+
+      item = {
+        "t": original_t,
+        "tReceived": received_t,
+        "logMonoTimeNs": log_ns,
+        "wallTime": wall,
+        "direction": direction,
+        "address": address,
+        "addressHex": "0x%03X" % address,
+        "name": WATCH_IDS.get(address, ""),
+        "bus": bus,
+        "dlc": len(raw),
+        "data": raw.hex().upper(),
+        "raw": raw,
+      }
+
+      output.append(item)
+      cache[(address, bus)] = item
+
+  return output
+
+
+def latest_address(cache, address):
+  newest = None
+  for (candidate, bus), item in cache.items():
+    if candidate != address:
+      continue
+    if newest is None or item["logMonoTimeNs"] > newest["logMonoTimeNs"]:
+      newest = item
+  return newest
+
+
+def raw_meta(item, stem):
+  if item is None:
+    return {
+      stem + "Raw": "",
+      stem + "Bus": "",
+      stem + "AgeMs": "",
+    }
+
+  return {
+    stem + "Raw": item["data"],
+    stem + "Bus": item["bus"],
+    stem + "AgeMs":
+      (time.monotonic_ns() - item["logMonoTimeNs"]) / 1e6,
+  }
+
+
+def decode_207(item, prefix):
+  stem = prefix + "207"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "GasPressedBit": "",
+    stem + "ResPlus": "",
+    stem + "SetMinus": "",
+    stem + "Cancel": "",
+  })
+
+  if item is None:
+    return output
+
+  data = item["raw"]
+  output.update({
+    stem + "GasPressedBit": bit(data, 1, 4),
+    stem + "ResPlus": bit(data, 0, 6),
+    stem + "SetMinus": bit(data, 0, 5),
+    stem + "Cancel": bit(data, 0, 4),
+  })
+  return output
+
+
+def decode_208(item, prefix):
+  stem = prefix + "208"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "AccRdy": "",
+    stem + "ResPlus": "",
+    stem + "SetMinus": "",
+    stem + "Cancel": "",
+    stem + "PedalDepressed": "",
+    stem + "NewSignal1": "",
+    stem + "NewSignal2": "",
+    stem + "Counter": "",
+  })
+
+  if item is None:
+    return output
+
+  data = item["raw"]
+  output.update({
+    stem + "AccRdy": bit(data, 1, 1),
+    stem + "ResPlus": bit(data, 0, 6),
+    stem + "SetMinus": bit(data, 0, 5),
+    stem + "Cancel": bit(data, 0, 4),
+    stem + "PedalDepressed": bit(data, 1, 4),
+    stem + "NewSignal1": bit(data, 1, 3),
+    stem + "NewSignal2": bit(data, 3, 7),
+    stem + "Counter":
+      (data[3] & 0x0F) if len(data) > 3 else "",
+  })
+  return output
+
+
+def decode_1ab(item, prefix):
+  stem = prefix + "1AB"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "PowerButton": "",
+    stem + "LkcButton": "",
+    stem + "DistanceButton": "",
+  })
+
+  if item is None:
+    return output
+
+  data = item["raw"]
+  output.update({
+    stem + "PowerButton": bit(data, 3, 4),
+    stem + "LkcButton": bit(data, 4, 3),
+    stem + "DistanceButton": bit(data, 0, 7),
+  })
+  return output
+
+
+def decode_271(item, prefix):
+  stem = prefix + "271"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "State": "",
+    stem + "StateName": "",
+    stem + "Active": False,
+    stem + "PumpRaw": "",
+    stem + "Pump": "",
+    stem + "Magnitude": "",
+    stem + "Counter": "",
+    stem + "ChecksumValid": "",
+  })
+
+  if item is None:
+    return output
+
+  try:
+    data = item["raw"]
+    if len(data) != 8:
+      return output
+
+    state = int(data[1])
+    names = {
+      0x00: "disabled",
+      0x01: "ready_no_brake",
+      0x20: "possible_brake_20",
+      0x21: "active_brake",
+      0x30: "possible_hold_30",
+      0x31: "possible_hold_31",
+    }
+
+    output.update({
+      stem + "State": state,
+      stem + "StateName":
+        names.get(state, "unknown_%02X" % state),
+      stem + "Active": state in (0x20, 0x21, 0x30, 0x31),
+      stem + "PumpRaw": signed_byte(int(data[3])),
+      stem + "Pump": signed_byte(int(data[3])) / 10.0,
+      stem + "Magnitude":
+        (int(data[4]) << 8) | int(data[5]),
+      stem + "Counter":
+        (int(data[6]) >> 2) & 0x07,
+      stem + "ChecksumValid":
+        int(data[7]) == dnga_checksum(0x271, list(data[:-1])),
+    })
+  except Exception:
+    pass
+
+  return output
+
+
+def decode_273(item, prefix):
+  stem = prefix + "273"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "SetSpeedKph": "",
+    stem + "FollowDistance": "",
+    stem + "Lead": "",
+    stem + "AccCmdKph": "",
+    stem + "IsAccel": "",
+    stem + "IsDecel": "",
+    stem + "SetMe12": "",
+    stem + "Set1WhenEngage": "",
+    stem + "Set0WhenEngage": "",
+    stem + "SetMe1": "",
+    stem + "Unknown1": "",
+    stem + "Unknown2": "",
+    stem + "ChecksumValid": "",
+  })
+
+  if item is None:
+    return output
+
+  try:
+    data = item["raw"]
+    if len(data) != 8:
+      return output
+
+    output.update({
+      stem + "SetSpeedKph": int(data[0]),
+      stem + "FollowDistance": int(data[1]) & 0x03,
+      stem + "Lead": bit(data, 1, 3),
+      stem + "AccCmdKph":
+        ((int(data[2]) << 8) | int(data[3])) * 0.01,
+      stem + "IsAccel": bit(data, 4, 6),
+      stem + "IsDecel": bit(data, 4, 5),
+      stem + "SetMe12": bit(data, 1, 1),
+      stem + "Set1WhenEngage": bit(data, 1, 5),
+      stem + "Set0WhenEngage": bit(data, 5, 0),
+      stem + "SetMe1": bit(data, 6, 6),
+      stem + "Unknown1": bit(data, 5, 7),
+      stem + "Unknown2": bit(data, 4, 1),
+      stem + "ChecksumValid":
+        int(data[7]) == dnga_checksum(0x273, list(data[:-1])),
+    })
+  except Exception:
+    pass
+
+  return output
+
+
+def decode_274(item, prefix):
+  stem = prefix + "274"
+  output = raw_meta(item, stem)
+  output.update({
+    stem + "LkasSet": "",
+    stem + "LkasEngaged": "",
+    stem + "HoldWarning": "",
+    stem + "LdaOff": "",
+    stem + "LdaAlert": "",
+    stem + "AebAlarm": "",
+    stem + "AebBrake": "",
+    stem + "FrontDepart": "",
+  })
+
+  if item is None:
+    return output
+
+  data = item["raw"]
+  output.update({
+    stem + "LkasSet": bit(data, 2, 3),
+    stem + "LkasEngaged": bit(data, 3, 6),
+    stem + "HoldWarning": bit(data, 2, 2),
+    stem + "LdaOff": bit(data, 1, 5),
+    stem + "LdaAlert": bit(data, 1, 6),
+    stem + "AebAlarm": bit(data, 1, 0),
+    stem + "AebBrake": bit(data, 2, 7),
+    stem + "FrontDepart": bit(data, 1, 1),
+  })
+  return output
+
+
+def startup_phase(t):
+  if t < 5.0:
+    return "BASELINE"
+  if t < 15.0:
+    return "ACC_MAIN"
+  if t < 25.0:
+    return "SET_MINUS"
+  if t < 35.0:
+    return "RES_PLUS"
+  if t < 45.0:
+    return "CANCEL"
+  if t < 55.0:
+    return "DISTANCE"
+  if t < 65.0:
+    return "LKA"
+  if t < 75.0:
+    return "NO_BUTTON_BASELINE"
+  if t < 90.0:
+    return "PREPARE_TO_DRIVE"
+  return "DRIVE"
+
+
+def startup_phase_remaining(t):
+  boundaries = [5.0, 15.0, 25.0, 35.0, 45.0,
+                55.0, 65.0, 75.0, 90.0]
+  for boundary in boundaries:
+    if t < boundary:
+      return boundary - t
+  return 0.0
+
+
+def button_events(car_state):
+  output = []
+  try:
+    for event in get_path(car_state, "buttonEvents", []):
+      try:
+        event_type = event.type.raw
+      except Exception:
+        event_type = as_text(get_path(event, "type", ""))
+
+      output.append({
+        "type": event_type,
+        "pressed": as_bool(get_path(event, "pressed", False)),
+      })
+  except Exception:
+    pass
+  return output
+
+
+def lead_values(radar):
+  lead = get_path(radar, "leadOne", None)
+  return {
+    "leadStatus": as_bool(get_path(lead, "status", False)),
+    "leadDRel": as_float(get_path(lead, "dRel", float("nan"))),
+    "leadVRel": as_float(get_path(lead, "vRel", float("nan"))),
+    "leadVLead": as_float(get_path(lead, "vLead", float("nan"))),
+    "leadALeadK": as_float(get_path(lead, "aLeadK", float("nan"))),
+    "leadModelProb":
+      as_float(get_path(lead, "modelProb", float("nan"))),
+  }
+
+
+def plan_values(plan):
+  output = {
+    "planSource":
+      as_text(get_path(plan, "longitudinalPlanSource", "")),
+    "planShouldStop":
+      as_bool(get_path(plan, "shouldStop", False)),
+    "planSpeed0": float("nan"),
+    "planSpeedEnd": float("nan"),
+    "planAccel0": float("nan"),
+    "planAccelEnd": float("nan"),
+  }
+
+  try:
+    speeds = get_path(plan, "speeds", [])
+    output["planSpeed0"] = float(speeds[0])
+    output["planSpeedEnd"] = float(speeds[-1])
+  except Exception:
+    pass
+
+  try:
+    accels = get_path(plan, "accels", [])
+    output["planAccel0"] = float(accels[0])
+    output["planAccelEnd"] = float(accels[-1])
+  except Exception:
+    pass
+
+  return output
+
+
+def wheel_values(car_state):
+  wheels = get_path(car_state, "wheelSpeeds", None)
+  return {
+    "wheelFL": as_float(get_path(wheels, "fl", float("nan"))),
+    "wheelFR": as_float(get_path(wheels, "fr", float("nan"))),
+    "wheelRL": as_float(get_path(wheels, "rl", float("nan"))),
+    "wheelRR": as_float(get_path(wheels, "rr", float("nan"))),
+  }
+
+
+def manager_values(manager_state):
+  running = []
+  not_running = []
+
+  try:
+    for process in get_path(manager_state, "processes", []):
+      name = as_text(get_path(process, "name", ""))
+      should_run = as_bool(
+        get_path(process, "shouldBeRunning", False))
+      is_running = as_bool(get_path(process, "running", False))
+
+      if should_run and is_running:
+        running.append(name)
+      elif should_run and not is_running:
+        not_running.append(name)
+  except Exception:
+    pass
+
+  return {
+    "managerExpectedRunning": "|".join(running),
+    "managerExpectedButStopped": "|".join(not_running),
+  }
+
+
+def device_values(device_state):
+  cpu_values = []
+  try:
+    cpu_values = [
+      float(value)
+      for value in get_path(device_state, "cpuUsagePercent", [])
+    ]
+  except Exception:
+    pass
+
+  return {
+    "freeSpacePercent": as_float(
+      get_path(device_state, "freeSpacePercent", float("nan"))),
+    "memoryUsagePercent": as_float(
+      get_path(device_state, "memoryUsagePercent", float("nan"))),
+    "cpuUsageAvg":
+      sum(cpu_values) / len(cpu_values) if cpu_values else float("nan"),
+    "cpuUsageMax":
+      max(cpu_values) if cpu_values else float("nan"),
+    "thermalStatus": as_text(
+      get_path(device_state, "thermalStatus", "")),
+    "networkType": as_text(
+      get_path(device_state, "networkType", "")),
+  }
+
+
+def add_reason(reasons, reason):
+  if reason and reason not in reasons:
+    reasons.append(reason)
+
+
+RAW_FIELDS = [
+  "sequence",
+  "t",
+  "tReceived",
+  "logMonoTimeNs",
+  "wallTime",
+  "startupPhase",
+  "eventId",
+  "eventReasons",
+  "direction",
+  "address",
+  "addressHex",
+  "name",
+  "bus",
+  "dlc",
+  "data",
+]
+
+
+SELECTED_FIELDS = [
+  "sequence",
+  "t",
+  "tReceived",
+  "logMonoTimeNs",
+  "wallTime",
+  "startupPhase",
+  "direction",
+  "address",
+  "addressHex",
+  "name",
+  "bus",
+  "dlc",
+  "data",
+]
+
+
+EVENT_FIELDS = [
+  "eventId",
+  "eventStartT",
+  "eventEndT",
+  "eventReasons",
+  "rawFramesAtStart",
+  "rawFramesAtEnd",
+]
+
+
+SUMMARY_FIELDS = [
+  "t",
+  "wallTime",
+  "row",
+  "loggerVersion",
+  "startupPhase",
+  "phaseRemainingSec",
+
+  "eventWindow",
+  "eventId",
+  "eventReasons",
+
+  "rawFramesWritten",
+  "selectedFramesWritten",
+  "rxFramesThisCycle",
+  "txFramesThisCycle",
+  "loopDtMs",
+
+  "carStateAlive",
+  "carControlAlive",
+  "controlsStateAlive",
+  "radarStateAlive",
+  "longitudinalPlanAlive",
+  "deviceStateAlive",
+  "managerStateAlive",
+
+  "vEgo",
+  "vEgoKph",
+  "vEgoRaw",
+  "aEgo",
+  "estimatedJerk",
+  "standstill",
+  "gearShifter",
+
+  "engineRpm",
+  "engineSpeedRpm",
+  "motorRpm",
+  "transmissionRpm",
+
+  "gas",
+  "gasPressed",
+  "brake",
+  "brakePressed",
+  "brakeLights",
+
+  "wheelFL",
+  "wheelFR",
+  "wheelRL",
+  "wheelRR",
+
+  "cruiseAvailable",
+  "cruiseEnabled",
+  "cruiseStandstill",
+  "cruiseSpeedKph",
+
+  "buttonEventsJson",
+
+  "carControlEnabled",
+  "carControlActive",
+  "controlsEnabled",
+  "controlsActive",
+  "actAccel",
+  "actGas",
+  "actBrake",
+  "actSpeed",
+  "controlsATarget",
+  "longControlState",
+
+  "leadStatus",
+  "leadDRel",
+  "leadVRel",
+  "leadVLead",
+  "leadALeadK",
+  "leadModelProb",
+
+  "planSource",
+  "planShouldStop",
+  "planSpeed0",
+  "planSpeedEnd",
+  "planAccel0",
+  "planAccelEnd",
+
+  "steeringAngleDeg",
+  "steeringRateDeg",
+  "steeringTorque",
+  "steeringTorqueEps",
+  "steeringPressed",
+  "steerRatioLive",
+
+  "freeSpacePercent",
+  "memoryUsagePercent",
+  "cpuUsageAvg",
+  "cpuUsageMax",
+  "thermalStatus",
+  "networkType",
+  "managerExpectedRunning",
+  "managerExpectedButStopped",
+
+  "opLongUnexpected",
+]
+
+for prefix in ("rx", "tx"):
+  SUMMARY_FIELDS.extend([
+    prefix + "207Raw",
+    prefix + "207Bus",
+    prefix + "207AgeMs",
+    prefix + "207GasPressedBit",
+    prefix + "207ResPlus",
+    prefix + "207SetMinus",
+    prefix + "207Cancel",
+
+    prefix + "208Raw",
+    prefix + "208Bus",
+    prefix + "208AgeMs",
+    prefix + "208AccRdy",
+    prefix + "208ResPlus",
+    prefix + "208SetMinus",
+    prefix + "208Cancel",
+    prefix + "208PedalDepressed",
+    prefix + "208NewSignal1",
+    prefix + "208NewSignal2",
+    prefix + "208Counter",
+
+    prefix + "1ABRaw",
+    prefix + "1ABBus",
+    prefix + "1ABAgeMs",
+    prefix + "1ABPowerButton",
+    prefix + "1ABLkcButton",
+    prefix + "1ABDistanceButton",
+
+    prefix + "271Raw",
+    prefix + "271Bus",
+    prefix + "271AgeMs",
+    prefix + "271State",
+    prefix + "271StateName",
+    prefix + "271Active",
+    prefix + "271PumpRaw",
+    prefix + "271Pump",
+    prefix + "271Magnitude",
+    prefix + "271Counter",
+    prefix + "271ChecksumValid",
+
+    prefix + "273Raw",
+    prefix + "273Bus",
+    prefix + "273AgeMs",
+    prefix + "273SetSpeedKph",
+    prefix + "273FollowDistance",
+    prefix + "273Lead",
+    prefix + "273AccCmdKph",
+    prefix + "273IsAccel",
+    prefix + "273IsDecel",
+    prefix + "273SetMe12",
+    prefix + "273Set1WhenEngage",
+    prefix + "273Set0WhenEngage",
+    prefix + "273SetMe1",
+    prefix + "273Unknown1",
+    prefix + "273Unknown2",
+    prefix + "273ChecksumValid",
+
+    prefix + "274Raw",
+    prefix + "274Bus",
+    prefix + "274AgeMs",
+    prefix + "274LkasSet",
+    prefix + "274LkasEngaged",
+    prefix + "274HoldWarning",
+    prefix + "274LdaOff",
+    prefix + "274LdaAlert",
+    prefix + "274AebAlarm",
+    prefix + "274AebBrake",
+    prefix + "274FrontDepart",
+  ])
+
+
+def write_raw(writer, frame, phase, event_id, reasons, sequence):
+  writer.writerow({
+    "sequence": sequence,
+    "t": frame["t"],
+    "tReceived": frame["tReceived"],
+    "logMonoTimeNs": frame["logMonoTimeNs"],
+    "wallTime": frame["wallTime"],
+    "startupPhase": phase,
+    "eventId": event_id,
+    "eventReasons": reasons,
+    "direction": frame["direction"],
+    "address": frame["address"],
+    "addressHex": frame["addressHex"],
+    "name": frame["name"],
+    "bus": frame["bus"],
+    "dlc": frame["dlc"],
+    "data": frame["data"],
+  })
+
+
+def write_selected(writer, frame, phase, sequence):
+  writer.writerow({
+    "sequence": sequence,
+    "t": frame["t"],
+    "tReceived": frame["tReceived"],
+    "logMonoTimeNs": frame["logMonoTimeNs"],
+    "wallTime": frame["wallTime"],
+    "startupPhase": phase,
+    "direction": frame["direction"],
+    "address": frame["address"],
+    "addressHex": frame["addressHex"],
+    "name": frame["name"],
+    "bus": frame["bus"],
+    "dlc": frame["dlc"],
+    "data": frame["data"],
+  })
+
+
+def main():
+  signal.signal(signal.SIGINT, request_stop)
+  signal.signal(signal.SIGTERM, request_stop)
+
+  os.chdir(BASE)
+
+  services = available_services()
+  sm = messaging.SubMaster(services)
+
+  can_sock = open_socket("can")
+  sendcan_sock = open_socket("sendcan")
+
+  stamp = datetime.now().strftime("%m%d_%H%M%S")
+
+  summary_path = (
+    BASE + "/dnga_solo_summary_" + stamp + ".csv.gz")
+  selected_path = (
+    BASE + "/dnga_solo_selected_can_" + stamp + ".csv.gz")
+  raw_path = (
+    BASE + "/dnga_solo_raw_events_" + stamp + ".csv.gz")
+  events_path = (
+    BASE + "/dnga_solo_events_" + stamp + ".csv")
+
+  print("DNGA solo mapping logger %s" % VERSION)
+  print("Passive/read-only. It does not transmit CAN.")
+  print("No vehicle code is modified.")
+  print("")
+  print("FIRST 90 SECONDS: remain parked and follow the phase shown.")
+  print("During each button phase, press and release that button 3 times.")
+  print("After PREPARE_TO_DRIVE changes to DRIVE, close SSH and drive.")
+  print("")
+  print("Summary:", summary_path)
+  print("Selected CAN:", selected_path)
+  print("Raw events:", raw_path)
+  print("Events:", events_path)
+
+  start_ns = time.monotonic_ns()
+  start_seconds = start_ns / 1e9
+  next_sample = time.monotonic()
+  last_loop = next_sample
+  last_status = next_sample
+
+  rx_cache = {}
+  tx_cache = {}
+  prebuffer = deque(maxlen=MAX_PREBUFFER_FRAMES)
+
+  summary_rows = 0
+  raw_sequence = 0
+  selected_sequence = 0
+  raw_written = 0
+  selected_written = 0
+
+  event_id = 0
+  event_active = False
+  event_start_t = 0.0
+  event_end_monotonic = 0.0
+  event_reasons = []
+  event_raw_start = 0
+  cooldown_until = 0.0
+
+  previous_values = {}
+  previous_a_ego = None
+  previous_a_time = None
+
+  with gzip.open(
+      summary_path, "wt", compresslevel=1, newline="") as summary_file, \
+       gzip.open(
+      selected_path, "wt", compresslevel=1, newline="") as selected_file, \
+       gzip.open(
+      raw_path, "wt", compresslevel=1, newline="") as raw_file, \
+       open(events_path, "w", newline="") as events_file:
+
+    summary_writer = csv.DictWriter(
+      summary_file,
+      fieldnames=SUMMARY_FIELDS,
+      extrasaction="ignore",
+    )
+    selected_writer = csv.DictWriter(
+      selected_file,
+      fieldnames=SELECTED_FIELDS,
+      extrasaction="ignore",
+    )
+    raw_writer = csv.DictWriter(
+      raw_file,
+      fieldnames=RAW_FIELDS,
+      extrasaction="ignore",
+    )
+    events_writer = csv.DictWriter(
+      events_file,
+      fieldnames=EVENT_FIELDS,
+      extrasaction="ignore",
+    )
+
+    summary_writer.writeheader()
+    selected_writer.writeheader()
+    raw_writer.writeheader()
+    events_writer.writeheader()
+
+    while not STOP_REQUESTED:
+      loop_now = time.monotonic()
+      t = loop_now - start_seconds
+      phase = startup_phase(t)
+      phase_remaining = startup_phase_remaining(t)
+      loop_dt_ms = (loop_now - last_loop) * 1000.0
+      last_loop = loop_now
+
+      try:
+        sm.update(0)
+      except TypeError:
+        sm.update()
+
+      rx_frames = drain_socket(
+        can_sock, "can", "rx", start_ns, rx_cache)
+      tx_frames = drain_socket(
+        sendcan_sock, "sendcan", "tx", start_ns, tx_cache)
+      new_frames = rx_frames + tx_frames
+
+      # Continuously record only the selected CAN IDs.
+      for frame in new_frames:
+        if frame["address"] in WATCH_IDS:
+          selected_sequence += 1
+          write_selected(
+            selected_writer,
+            frame,
+            phase,
+            selected_sequence,
+          )
+          selected_written += 1
+
+      car_state = sm_get(sm, "carState")
+      car_control = sm_get(sm, "carControl")
+      controls = sm_get(sm, "controlsState")
+      radar = sm_get(sm, "radarState")
+      plan = sm_get(sm, "longitudinalPlan")
+      live = sm_get(sm, "liveParameters")
+      device_state = sm_get(sm, "deviceState")
+      manager_state = sm_get(sm, "managerState")
+
+      cruise = get_path(car_state, "cruiseState", None)
+      actuators = get_path(car_control, "actuators", None)
+
+      v_ego = as_float(get_path(car_state, "vEgo", 0.0), 0.0)
+      a_ego = as_float(
+        get_path(car_state, "aEgo", float("nan")))
+      gas = as_float(
+        get_path(car_state, "gas", float("nan")))
+      gas_pressed = as_bool(
+        get_path(car_state, "gasPressed", False))
+      brake_pressed = as_bool(
+        get_path(car_state, "brakePressed", False))
+      brake_lights = as_bool(
+        get_path(car_state, "brakeLights", False))
+      standstill = as_bool(
+        get_path(car_state, "standstill", False))
+
+      cruise_available = as_bool(
+        get_path(cruise, "available", False))
+      cruise_enabled = as_bool(
+        get_path(cruise, "enabled", False))
+      cruise_standstill = as_bool(
+        get_path(cruise, "standstill", False))
+      cruise_speed = as_float(
+        get_path(cruise, "speed", float("nan")))
+
+      rx271 = decode_271(
+        latest_address(rx_cache, 0x271), "rx")
+      rx271_active = as_bool(
+        rx271.get("rx271Active", False))
+      rx271_state = as_text(
+        rx271.get("rx271StateName", ""))
+
+      buttons = button_events(car_state)
+
+      current_values = {
+        "brakePressed": brake_pressed,
+        "gasPressed": gas_pressed,
+        "cruiseAvailable": cruise_available,
+        "cruiseEnabled": cruise_enabled,
+        "cruiseStandstill": cruise_standstill,
+        "standstill": standstill,
+        "rx271Active": rx271_active,
+      }
+
+      trigger_reasons = []
+
+      if t >= STARTUP_CAPTURE_SECONDS:
+        # Rising edges and state transitions only. Sustained braking does not
+        # keep extending a raw event window.
+        for name, value in current_values.items():
+          if name in previous_values and value != previous_values[name]:
+            add_reason(
+              trigger_reasons,
+              "%s:%s>%s" % (
+                name,
+                previous_values[name],
+                value,
+              ),
+            )
+
+        if buttons:
+          add_reason(trigger_reasons, "buttonEvent")
+
+        if a_ego == a_ego:
+          previous_strong_accel = as_bool(
+            previous_values.get("strongAccel", False))
+          previous_strong_decel = as_bool(
+            previous_values.get("strongDecel", False))
+
+          strong_accel = a_ego >= 0.75
+          strong_decel = a_ego <= -0.75
+
+          if strong_accel and not previous_strong_accel:
+            add_reason(trigger_reasons, "strongAccel")
+          if strong_decel and not previous_strong_decel:
+            add_reason(trigger_reasons, "strongDecel")
+
+          current_values["strongAccel"] = strong_accel
+          current_values["strongDecel"] = strong_decel
+
+      # Startup captures every CAN ID for 90 seconds.
+      startup_full_capture = t < STARTUP_CAPTURE_SECONDS
+
+      # Start a bounded event only after startup and cooldown.
+      if (
+          not startup_full_capture and
+          not event_active and
+          trigger_reasons and
+          loop_now >= cooldown_until
+      ):
+        event_id += 1
+        event_active = True
+        event_start_t = t
+        event_end_monotonic = loop_now + POST_EVENT_SECONDS
+        event_reasons = list(trigger_reasons)
+        event_raw_start = raw_written
+
+        reason_text = "|".join(event_reasons)
+
+        for frame in prebuffer:
+          raw_sequence += 1
+          write_raw(
+            raw_writer,
+            frame,
+            phase,
+            event_id,
+            reason_text,
+            raw_sequence,
+          )
+          raw_written += 1
+        prebuffer.clear()
+
+      elif event_active and trigger_reasons:
+        for reason in trigger_reasons:
+          add_reason(event_reasons, reason)
+
+      if startup_full_capture:
+        # Startup is event 0 and is labeled by the timed button phase.
+        for frame in new_frames:
+          raw_sequence += 1
+          write_raw(
+            raw_writer,
+            frame,
+            phase,
+            0,
+            "startup_button_mapping",
+            raw_sequence,
+          )
+          raw_written += 1
+
+      elif event_active:
+        reason_text = "|".join(event_reasons)
+        for frame in new_frames:
+          raw_sequence += 1
+          write_raw(
+            raw_writer,
+            frame,
+            phase,
+            event_id,
+            reason_text,
+            raw_sequence,
+          )
+          raw_written += 1
+
+        if loop_now >= event_end_monotonic:
+          events_writer.writerow({
+            "eventId": event_id,
+            "eventStartT": event_start_t,
+            "eventEndT": t,
+            "eventReasons": reason_text,
+            "rawFramesAtStart": event_raw_start,
+            "rawFramesAtEnd": raw_written,
+          })
+          events_file.flush()
+
+          event_active = False
+          cooldown_until = loop_now + EVENT_COOLDOWN_SECONDS
+          event_reasons = []
+
+      else:
+        for frame in new_frames:
+          prebuffer.append(frame)
+
+        # Keep only approximately the requested pre-event time.
+        cutoff = t - PRE_EVENT_SECONDS
+        while prebuffer and prebuffer[0]["t"] < cutoff:
+          prebuffer.popleft()
+
+      estimated_jerk = float("nan")
+      if (
+          previous_a_ego is not None and
+          previous_a_time is not None and
+          a_ego == a_ego
+      ):
+        dt = loop_now - previous_a_time
+        if dt > 0.001:
+          estimated_jerk = (a_ego - previous_a_ego) / dt
+
+      if a_ego == a_ego:
+        previous_a_ego = a_ego
+        previous_a_time = loop_now
+
+      car_control_active = as_bool(
+        get_path(car_control, "active", False))
+      controls_active = as_bool(
+        get_path(controls, "active", False))
+      act_accel = as_float(
+        get_path(actuators, "accel", float("nan")))
+
+      op_long_unexpected = (
+        car_control_active or
+        controls_active or
+        (act_accel == act_accel and abs(act_accel) > 0.05)
+      )
+
+      row = {
+        "t": t,
+        "wallTime": datetime.now().isoformat(),
+        "row": summary_rows,
+        "loggerVersion": VERSION,
+        "startupPhase": phase,
+        "phaseRemainingSec": phase_remaining,
+
+        "eventWindow":
+          startup_full_capture or event_active,
+        "eventId":
+          0 if startup_full_capture else (
+            event_id if event_active else ""),
+        "eventReasons":
+          "startup_button_mapping" if startup_full_capture else (
+            "|".join(event_reasons) if event_active else ""),
+
+        "rawFramesWritten": raw_written,
+        "selectedFramesWritten": selected_written,
+        "rxFramesThisCycle": len(rx_frames),
+        "txFramesThisCycle": len(tx_frames),
+        "loopDtMs": loop_dt_ms,
+
+        "carStateAlive": sm_alive(sm, "carState"),
+        "carControlAlive": sm_alive(sm, "carControl"),
+        "controlsStateAlive": sm_alive(sm, "controlsState"),
+        "radarStateAlive": sm_alive(sm, "radarState"),
+        "longitudinalPlanAlive":
+          sm_alive(sm, "longitudinalPlan"),
+        "deviceStateAlive": sm_alive(sm, "deviceState"),
+        "managerStateAlive": sm_alive(sm, "managerState"),
+
+        "vEgo": v_ego,
+        "vEgoKph": v_ego * 3.6,
+        "vEgoRaw": as_float(
+          get_path(car_state, "vEgoRaw", float("nan"))),
+        "aEgo": a_ego,
+        "estimatedJerk": estimated_jerk,
+        "standstill": standstill,
+        "gearShifter": as_text(
+          get_path(car_state, "gearShifter", "")),
+
+        "engineRpm": as_float(first_value(
+          car_state,
+          ["engineRpm", "engineRPM", "rpm"],
+          float("nan"),
+        )),
+        "engineSpeedRpm": as_float(first_value(
+          car_state,
+          ["engineSpeedRpm", "engineSpeed"],
+          float("nan"),
+        )),
+        "motorRpm": as_float(first_value(
+          car_state,
+          ["motorRpm", "tractionMotorRpm"],
+          float("nan"),
+        )),
+        "transmissionRpm": as_float(first_value(
+          car_state,
+          ["transmissionRpm", "inputShaftRpm"],
+          float("nan"),
+        )),
+
+        "gas": gas,
+        "gasPressed": gas_pressed,
+        "brake": as_float(
+          get_path(car_state, "brake", float("nan"))),
+        "brakePressed": brake_pressed,
+        "brakeLights": brake_lights,
+
+        "cruiseAvailable": cruise_available,
+        "cruiseEnabled": cruise_enabled,
+        "cruiseStandstill": cruise_standstill,
+        "cruiseSpeedKph": cruise_speed * 3.6,
+
+        "buttonEventsJson": json.dumps(
+          buttons, separators=(",", ":")),
+
+        "carControlEnabled": as_bool(
+          get_path(car_control, "enabled", False)),
+        "carControlActive": car_control_active,
+        "controlsEnabled": as_bool(
+          get_path(controls, "enabled", False)),
+        "controlsActive": controls_active,
+        "actAccel": act_accel,
+        "actGas": as_float(
+          get_path(actuators, "gas", float("nan"))),
+        "actBrake": as_float(
+          get_path(actuators, "brake", float("nan"))),
+        "actSpeed": as_float(
+          get_path(actuators, "speed", float("nan"))),
+        "controlsATarget": as_float(
+          get_path(controls, "aTarget", float("nan"))),
+        "longControlState": as_text(
+          get_path(controls, "longControlState", "")),
+
+        "steeringAngleDeg": as_float(
+          get_path(
+            car_state, "steeringAngleDeg", float("nan"))),
+        "steeringRateDeg": as_float(
+          get_path(
+            car_state, "steeringRateDeg", float("nan"))),
+        "steeringTorque": as_float(
+          get_path(
+            car_state, "steeringTorque", float("nan"))),
+        "steeringTorqueEps": as_float(
+          get_path(
+            car_state, "steeringTorqueEps", float("nan"))),
+        "steeringPressed": as_bool(
+          get_path(car_state, "steeringPressed", False)),
+        "steerRatioLive": as_float(
+          get_path(live, "steerRatio", float("nan"))),
+
+        "opLongUnexpected": op_long_unexpected,
+      }
+
+      row.update(wheel_values(car_state))
+      row.update(lead_values(radar))
+      row.update(plan_values(plan))
+      row.update(device_values(device_state))
+      row.update(manager_values(manager_state))
+
+      for prefix, cache in (("rx", rx_cache), ("tx", tx_cache)):
+        row.update(decode_207(
+          latest_address(cache, 0x207), prefix))
+        row.update(decode_208(
+          latest_address(cache, 0x208), prefix))
+        row.update(decode_1ab(
+          latest_address(cache, 0x1AB), prefix))
+        row.update(decode_271(
+          latest_address(cache, 0x271), prefix))
+        row.update(decode_273(
+          latest_address(cache, 0x273), prefix))
+        row.update(decode_274(
+          latest_address(cache, 0x274), prefix))
+
+      summary_writer.writerow(row)
+      summary_rows += 1
+
+      previous_values.update(current_values)
+
+      if summary_rows % 40 == 0:
+        summary_file.flush()
+        selected_file.flush()
+        raw_file.flush()
+
+      if loop_now - last_status >= 2.0:
+        print(
+          "%6.1fs phase=%-18s remain=%4.1f "
+          "speed=%5.1f cruise=%s rx271=%-16s mag=%s "
+          "raw=%d selected=%d loop=%5.1fms" % (
+            t,
+            phase,
+            phase_remaining,
+            row["vEgoKph"],
+            "on" if cruise_enabled else "off",
+            rx271_state,
+            row.get("rx271Magnitude", ""),
+            raw_written,
+            selected_written,
+            loop_dt_ms,
+          )
+        )
+        last_status = loop_now
+
+      next_sample += 1.0 / RATE_HZ
+      delay = next_sample - time.monotonic()
+
+      if delay > 0:
+        time.sleep(delay)
+      else:
+        next_sample = time.monotonic()
+
+  # Close an active event cleanly on stop.
+  if event_active:
+    events_writer.writerow({
+      "eventId": event_id,
+      "eventStartT": event_start_t,
+      "eventEndT": time.monotonic() - start_seconds,
+      "eventReasons": "|".join(event_reasons),
+      "rawFramesAtStart": event_raw_start,
+      "rawFramesAtEnd": raw_written,
+    })
+
+  print("")
+  print("Logger stopped cleanly.")
+  print("Summary rows:", summary_rows)
+  print("Selected CAN frames:", selected_written)
+  print("Raw event frames:", raw_written)
+  print("Summary:", summary_path)
+  print("Selected CAN:", selected_path)
+  print("Raw events:", raw_path)
+  print("Events:", events_path)
+
+
+if __name__ == "__main__":
+  main()

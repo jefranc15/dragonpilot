@@ -1,0 +1,77 @@
+--- a/selfdrive/car/dnga/carstate.py
++++ b/selfdrive/car/dnga/carstate.py
+@@ -38,6 +38,11 @@
+     self.stock_brake_mag = 0
+     self.stock_acc_set_speed = 0
+ 
++    # ACC MAIN on this Yaris Cross is a momentary button on PCM_BUTTONS
++    # (0x208 byte 0 bit 7). The vehicle's latched ACC-main/available state
++    # is broadcast separately by ACC_CMD_HUD.SET_ME_1_2.
++    self.acc_main_button = False
++
+     # Real accelerator pedal found on raw CAN: bus 1, addr 0x277, bytes 1-2 big endian
+     self.gas_raw_277 = 0
+ 
+@@ -98,7 +103,10 @@
+       self.lkas_latch = not self.lkas_latch
+       self.lkas_btn_rising_edge_seen = False
+ 
+-    ret.cruiseState.available = True
++    # ACC_MAIN is momentary; do not use it directly as cruise enabled.
++    # Use the stock 0x273 latched state as cruise availability.
++    self.acc_main_button = bool(cp.vl["PCM_BUTTONS"]["ACC_MAIN"])
++    ret.cruiseState.available = bool(cp.vl["ACC_CMD_HUD"]["SET_ME_1_2"])
+ 
+     distance_btn = cp.vl["BUTTONS"]["DISTANCE_BTN"]
+     if distance_btn and not self.prev_distance_btn:
+@@ -168,14 +176,16 @@
+ 
+     self.cruise_speed = clip(self.cruise_speed, 30 * CV.KPH_TO_MS, 125 * CV.KPH_TO_MS)
+     
+-    # OP generates the ACC frames now, so OP dictates UI state
++    # OP generates the ACC frames now, but the physical ACC MAIN state
++    # still gates whether SET/RES is allowed to remain engaged.
+     ret.cruiseState.speed = self.cruise_speed
+     ret.cruiseState.standstill = ret.vEgoRaw < 0.01
+-    ret.cruiseState.nonAdaptive = False 
+-    ret.cruiseState.enabled = self.is_cruise_latch
+-    
++    ret.cruiseState.nonAdaptive = False
++
+     if not ret.cruiseState.available:
+       self.is_cruise_latch = False
++
++    ret.cruiseState.enabled = self.is_cruise_latch
+ 
+     ret.leftBlinker = bool(cp.vl["METER_CLUSTER"]["LEFT_SIGNAL"])
+     ret.rightBlinker = bool(cp.vl["METER_CLUSTER"]["RIGHT_SIGNAL"])
+@@ -217,7 +227,7 @@
+         ("STEER_ANGLE", "STEERING_MODULE", 0.),
+         ("MAIN_TORQUE", "STEERING_MODULE", 0.),
+         ("STEERING_TORQUE", "EPS_SHAFT_TORQUE", 0.),
+-        ("ACC_RDY", "PCM_BUTTONS", 0),
++        ("ACC_MAIN", "PCM_BUTTONS", 0),
+         ("GAS_PRESSED", "PCM_BUTTONS_HYBRID", 0),
+         ("SET_MINUS", "PCM_BUTTONS", 0),
+         ("SET_MINUS", "PCM_BUTTONS_HYBRID", 0),
+--- a/selfdrive/car/dnga/dngacan.py
++++ b/selfdrive/car/dnga/dngacan.py
+@@ -61,7 +61,7 @@
+ 
+   values = {
+     "SET_SPEED": set_speed * CV.MS_TO_KPH,
+-    "FOLLOW_DISTANCE": compute_set_distance(set_distance),
++    "FOLLOW_DISTANCE": compute_set_distance(set_distance) if acc_rdy else 3,
+     "IS_LEAD": is_lead,
+     "IS_ACCEL": (not is_braking) and enabled,
+     "IS_DECEL": is_braking and enabled,
+--- a/selfdrive/car/dnga/dnga_hev.dbc
++++ b/selfdrive/car/dnga/dnga_hev.dbc
+@@ -127,6 +127,7 @@
+  SG_ CHECKSUM : 40|8@1+ (1,0) [0|255] "" XXX
+ 
+ BO_ 520 PCM_BUTTONS: 6 XXX
++ SG_ ACC_MAIN : 7|1@0+ (1,0) [0|1] "" XXX
+  SG_ ACC_RDY : 9|1@0+ (1,0) [0|1] "" XXX
+  SG_ RES_PLUS : 6|1@0+ (1,0) [0|1] "" XXX
+  SG_ SET_MINUS : 5|1@0+ (1,0) [0|1] "" XXX
