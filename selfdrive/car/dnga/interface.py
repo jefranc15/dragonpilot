@@ -58,8 +58,12 @@ class CarInterface(CarInterfaceBase):
       ret.longitudinalTuning.kpV = [2.2, 2.0, 1.8]
       ret.longitudinalTuning.kiBP = [0.]
       ret.longitudinalTuning.kiV = [0.]
-      ret.longitudinalActuatorDelayLowerBound = 0.15
-      ret.longitudinalActuatorDelayUpperBound = 0.20
+      # V2.5S: same old speed-target longcontrol architecture as Buka
+      # release_ka2, so these delay bounds are directly compatible.
+      # Longer look-ahead anticipates the real HEV regen/hydraulic response
+      # instead of reacting after the vehicle has already overshot.
+      ret.longitudinalActuatorDelayLowerBound = 0.40
+      ret.longitudinalActuatorDelayUpperBound = 0.50
     else:
       ret.dashcamOnly = True
       ret.safetyModel = car.CarParams.SafetyModel.noOutput

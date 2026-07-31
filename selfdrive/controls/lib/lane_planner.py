@@ -53,21 +53,16 @@ class LanePlanner:
     if self.dp_camera_offset != camera_offset:
       self.dp_camera_offset = camera_offset
       camera_offset = -camera_offset
-      # from 0.04 to -0.04, difference is -0.08
-      # so we can assume the distance between C3's 2 cameras is 8 cm
       self.camera_offset = (camera_offset - 8) * 0.01 if self.dp_wide_camera else camera_offset * 0.01
     if self.dp_path_offset != path_offset:
       self.dp_path_offset = path_offset
       path_offset = -path_offset
-      # from 0.04 to -0.04, difference is -0.08
-      # so we can assume the distance between C3's 2 cameras is 8 cm
       self.path_offset = (path_offset - 8) * 0.01 if self.dp_wide_camera else path_offset * 0.01
 
   def parse_model(self, md):
     lane_lines = md.laneLines
     if len(lane_lines) == 4 and len(lane_lines[0].t) == TRAJECTORY_SIZE:
       self.ll_t = (np.array(lane_lines[1].t) + np.array(lane_lines[2].t))/2
-      # left and right ll x is the same
       self.ll_x = lane_lines[1].x
       self.lll_y = np.array(lane_lines[1].y) + self.camera_offset
       self.rll_y = np.array(lane_lines[2].y) + self.camera_offset
@@ -82,9 +77,8 @@ class LanePlanner:
       self.r_lane_change_prob = desire_state[log.LateralPlan.Desire.laneChangeRight]
 
   def get_d_path(self, v_ego, path_t, path_xyz):
-    # Reduce reliance on lanelines that are too far apart or
-    # will be in a few seconds
-    path_xyz[:, 1] += self.path_offset
+    # Apply path offset after lane/model blending so strong lane confidence
+    # cannot erase the user's selected lane-position bias.
     l_prob, r_prob = self.lll_prob, self.rll_prob
     width_pts = self.rll_y - self.lll_y
     prob_mods = []
@@ -95,13 +89,11 @@ class LanePlanner:
     l_prob *= mod
     r_prob *= mod
 
-    # Reduce reliance on uncertain lanelines
     l_std_mod = interp(self.lll_std, [.15, .3], [1.0, 0.0])
     r_std_mod = interp(self.rll_std, [.15, .3], [1.0, 0.0])
     l_prob *= l_std_mod
     r_prob *= r_std_mod
 
-    # Find current lanewidth
     self.lane_width_certainty.update(l_prob * r_prob)
     current_lane_width = abs(self.rll_y[0] - self.lll_y[0])
     self.lane_width_estimate.update(current_lane_width)
@@ -121,4 +113,8 @@ class LanePlanner:
       path_xyz[:,1] = self.d_prob * lane_path_y_interp + (1.0 - self.d_prob) * path_xyz[:,1]
     else:
       cloudlog.warning("Lateral mpc - NaNs in laneline times, ignoring")
+
+    # Preserve the full selected offset in lane, auto, and laneless modes.
+    # Existing UI convention is preserved: positive moves left, negative moves right.
+    path_xyz[:, 1] += self.path_offset
     return path_xyz

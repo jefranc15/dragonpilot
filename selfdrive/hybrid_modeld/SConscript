@@ -1,0 +1,69 @@
+Import('env', 'arch', 'cereal', 'messaging', 'common', 'gpucommon', 'visionipc', 'transformations')
+lenv = env.Clone()
+
+libs = [cereal, messaging, common, visionipc, gpucommon,
+        'OpenCL', 'SNPE', 'symphony-cpu', 'capnp', 'zmq', 'kj', 'yuv']
+
+def get_dlsym_offset():
+  """Returns the offset between dlopen and dlsym in libdl.so."""
+  import ctypes
+  libdl = ctypes.PyDLL('libdl.so')
+  dlopen = ctypes.cast(libdl.dlopen, ctypes.c_void_p).value
+  dlsym = ctypes.cast(libdl.dlsym, ctypes.c_void_p).value
+  return dlsym - dlopen
+
+
+common_src = [
+  "models/commonmodel.cc",
+  "runners/snpemodel.cc",
+  "transforms/loadyuv.cc",
+  "transforms/transform.cc",
+]
+
+thneed_src = [
+  "thneed/thneed.cc",
+  "thneed/serialize.cc",
+  "thneed/optimizer.cc",
+  "runners/thneedmodel.cc",
+]
+
+use_thneed = not GetOption('no_thneed')
+
+if arch == "aarch64" or arch == "larch64":
+  libs += ['gsl', 'CB']
+  libs += ['gnustl_shared'] if arch == "aarch64" else ['pthread', 'dl']
+
+  if use_thneed:
+    common_src += thneed_src
+    dlsym_offset = get_dlsym_offset()
+    lenv['CXXFLAGS'].append("-DUSE_THNEED")
+    lenv['CXXFLAGS'].append(f"-DDLSYM_OFFSET={dlsym_offset}")
+else:
+  libs += ['pthread']
+
+  if not GetOption('snpe'):
+    common_src += ['runners/onnxmodel.cc']
+    lenv['CFLAGS'].append("-DUSE_ONNX_MODEL")
+    lenv['CXXFLAGS'].append("-DUSE_ONNX_MODEL")
+
+  if arch == "Darwin":
+    del libs[libs.index('OpenCL')]
+    lenv['FRAMEWORKS'] = ['OpenCL']
+    del libs[libs.index('SNPE')]
+    del libs[libs.index('symphony-cpu')]
+    del common_src[common_src.index('runners/snpemodel.cc')]
+  elif arch == "jarch64":
+    del libs[libs.index('SNPE')]
+    del libs[libs.index('symphony-cpu')]
+    del common_src[common_src.index('runners/snpemodel.cc')]
+
+common_model = lenv.Object(common_src)
+
+# supercombo.thneed is the known R2/LegacyPilot 0.8.16 EON/C2 model.
+# It is intentionally precompiled: rebuilding it from the newer DLC on an
+# EON/comma two is slow and requires model-conversion dependencies that are
+# not part of DragonPilot 0.8.13.
+lenv.Program('_modeld', [
+    "modeld.cc",
+    "models/driving.cc",
+  ] + common_model, LIBS=libs + transformations)

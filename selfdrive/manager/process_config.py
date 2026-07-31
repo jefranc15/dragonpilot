@@ -1,10 +1,13 @@
 import os
 
+from common.params import Params
+
 from selfdrive.hardware import EON, TICI, PC
 from selfdrive.manager.process import PythonProcess, NativeProcess, DaemonProcess
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 MIPI = os.getenv("USE_MIPI") is not None
+USE_HYBRID_MODEL = Params().get_bool("NavSettingTime24h") and not os.path.isfile("/data/media/0/use_dp_0813_model")
 
 procs = [
   DaemonProcess("manage_athenad", "selfdrive.athena.manage_athenad", "AthenadPid"),
@@ -14,7 +17,9 @@ procs = [
   NativeProcess("dmonitoringmodeld", "selfdrive/modeld", ["./dmonitoringmodeld"], enabled=not MIPI and (not PC or WEBCAM), driverview=True),
   NativeProcess("logcatd", "selfdrive/logcatd", ["./logcatd"]),
   NativeProcess("loggerd", "selfdrive/loggerd", ["./loggerd"]),
-  NativeProcess("modeld", "selfdrive/modeld", ["./modeld"]),
+  # Default to the R2/LegacyPilot 0.8.16 hybrid driving model. Setting
+  # this marker restores the original DP 0.8.13 model without reinstalling.
+  NativeProcess("modeld", "selfdrive/hybrid_modeld" if USE_HYBRID_MODEL else "selfdrive/modeld", ["sh", "./modeld"] if USE_HYBRID_MODEL else ["./modeld"]),
   NativeProcess("navd", "selfdrive/ui/navd", ["./navd"], persistent=True),
   NativeProcess("proclogd", "selfdrive/proclogd", ["./proclogd"]),
   NativeProcess("sensord", "selfdrive/sensord", ["./sensord"], enabled=not PC and not MIPI, persistent=EON, sigkill=EON),

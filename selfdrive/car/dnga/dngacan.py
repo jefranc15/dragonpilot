@@ -56,16 +56,21 @@ def dnga_create_brake_command(packer, brake_state, pump_reaction, brake_mag, idx
 
   return packer.make_can_msg("ACC_BRAKE", 0, values)
 
-def dnga_create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead, des_speed, brake_amt, set_distance):
-  is_braking = brake_amt > 0.01
+def dnga_create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead,
+                              des_speed, is_accel, is_decel, set_distance):
+  """Build ACC_CMD_HUD/0x273 with explicit stock longitudinal state bits.
 
+  IS_ACCEL and IS_DECEL are independent mode bits on the HEV. In particular,
+  stock standstill uses both bits at once, so they must not be inferred from a
+  single brake amount.
+  """
   values = {
     "SET_SPEED": set_speed * CV.MS_TO_KPH,
-    "FOLLOW_DISTANCE": compute_set_distance(set_distance),
+    "FOLLOW_DISTANCE": compute_set_distance(set_distance) if acc_rdy else 3,
     "IS_LEAD": is_lead,
-    "IS_ACCEL": (not is_braking) and enabled,
-    "IS_DECEL": is_braking and enabled,
-    "SET_ME_1_2": acc_rdy, 
+    "IS_ACCEL": bool(enabled and is_accel),
+    "IS_DECEL": bool(enabled and is_decel),
+    "SET_ME_1_2": acc_rdy,
     "SET_ME_1": 1,
     "SET_0_WHEN_ENGAGE": not enabled,
     "SET_1_WHEN_ENGAGE": enabled,
@@ -73,7 +78,7 @@ def dnga_create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead, des_
   }
 
   dat = packer.make_can_msg("ACC_CMD_HUD", 0, values)[2]
-  crc = (dnga_checksum(0x273, dat[:-1]))
+  crc = dnga_checksum(0x273, dat[:-1])
   values["CHECKSUM"] = crc
   return packer.make_can_msg("ACC_CMD_HUD", 0, values)
 

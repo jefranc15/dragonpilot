@@ -54,6 +54,11 @@ AddOption('--no-thneed',
           dest='no_thneed',
           help='avoid using thneed')
 
+AddOption('--hybrid-model-only',
+          action='store_true',
+          dest='hybrid_model_only',
+          help='build only the comma two hybrid driving model and its dependencies')
+
 real_arch = arch = subprocess.check_output(["uname", "-m"], encoding='utf8').rstrip()
 if platform.system() == "Darwin":
   arch = "Darwin"
@@ -272,7 +277,7 @@ if GetOption('compile_db'):
   env.CompilationDatabase('compile_commands.json')
 
 # Setup cache dir
-cache_dir = '/data/scons_cache' if TICI else '/tmp/scons_cache'
+cache_dir = os.getenv('SCONS_CACHE_DIR', '/data/scons_cache' if TICI else '/tmp/scons_cache')
 CacheDir(cache_dir)
 Clean(["."], cache_dir)
 
@@ -356,7 +361,8 @@ else:
   elif arch != "Darwin":
     qt_libs += ["GL"]
 
-qt_env.Tool('qt')
+if os.path.isfile("selfdrive/ui/SConscript"):
+  qt_env.Tool('qt')
 qt_env['CPPPATH'] += qt_dirs + ["#selfdrive/ui/qt/"]
 qt_flags = [
   "-D_REENTRANT",
@@ -430,44 +436,51 @@ if arch not in ["aarch64", "larch64"]:
   })
 
 Export('rednose_config')
-SConscript(['rednose/SConscript'])
+hybrid_model_only = GetOption('hybrid_model_only')
+if not hybrid_model_only:
+  SConscript(['rednose/SConscript'])
 
 # Build openpilot
-
-SConscript(['cereal/SConscript'])
-SConscript(['panda/board/SConscript'])
-SConscript(['opendbc/can/SConscript'])
 
 SConscript(['third_party/SConscript'])
 
 SConscript(['common/SConscript'])
-SConscript(['common/kalman/SConscript'])
 SConscript(['common/transformations/SConscript'])
+SConscript(['selfdrive/hybrid_modeld/SConscript'])
 
-SConscript(['selfdrive/camerad/SConscript'])
-SConscript(['selfdrive/modeld/SConscript'])
+if not hybrid_model_only:
+  SConscript(['panda/board/SConscript'])
+  SConscript(['opendbc/can/SConscript'])
 
-SConscript(['selfdrive/controls/lib/cluster/SConscript'])
-SConscript(['selfdrive/controls/lib/lateral_mpc_lib/SConscript'])
-SConscript(['selfdrive/controls/lib/longitudinal_mpc_lib/SConscript'])
+  SConscript(['common/kalman/SConscript'])
 
-SConscript(['selfdrive/boardd/SConscript'])
-SConscript(['selfdrive/proclogd/SConscript'])
-SConscript(['selfdrive/clocksd/SConscript'])
+  SConscript(['selfdrive/camerad/SConscript'])
+  SConscript(['selfdrive/modeld/SConscript'])
 
-SConscript(['selfdrive/loggerd/SConscript'])
+  SConscript(['selfdrive/controls/lib/cluster/SConscript'])
+  SConscript(['selfdrive/controls/lib/lateral_mpc_lib/SConscript'])
+  SConscript(['selfdrive/controls/lib/longitudinal_mpc_lib/SConscript'])
 
-SConscript(['selfdrive/locationd/SConscript'])
-if not os.path.isfile("/JETSON"):
-  SConscript(['selfdrive/sensord/SConscript'])
-SConscript(['selfdrive/ui/SConscript'])
+  SConscript(['selfdrive/boardd/SConscript'])
+  SConscript(['selfdrive/proclogd/SConscript'])
+  SConscript(['selfdrive/clocksd/SConscript'])
 
-if arch != "Darwin":
-  SConscript(['selfdrive/logcatd/SConscript'])
+  SConscript(['selfdrive/loggerd/SConscript'])
 
-if GetOption('test'):
-  SConscript('panda/tests/safety/SConscript')
+  SConscript(['selfdrive/locationd/SConscript'])
+  if not os.path.isfile("/JETSON"):
+    SConscript(['selfdrive/sensord/SConscript'])
+  # The nightly device snapshot retains prebuilt UI binaries but does not
+  # include the qmake-generated UI SConscript.
+  if os.path.isfile("selfdrive/ui/SConscript"):
+    SConscript(['selfdrive/ui/SConscript'])
 
-external_sconscript = GetOption('external_sconscript')
-if external_sconscript:
-  SConscript([external_sconscript])
+  if arch != "Darwin":
+    SConscript(['selfdrive/logcatd/SConscript'])
+
+  if GetOption('test'):
+    SConscript('panda/tests/safety/SConscript')
+
+  external_sconscript = GetOption('external_sconscript')
+  if external_sconscript:
+    SConscript([external_sconscript])
