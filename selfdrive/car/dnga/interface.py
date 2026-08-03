@@ -82,7 +82,7 @@ class CarInterface(CarInterfaceBase):
 
     # Read real accelerator pedal directly from raw CAN:
     # bus 1, addr 0x277, bytes 1-2 big endian.
-    # This signal is not currently defined in dnga_hev.dbc and is not on parser bus 0.
+    # These signals are on bus 1 while the main DBC parser is on bus 0.
     for can_str in can_strings:
       try:
         evt = log.Event.from_bytes(can_str)
@@ -92,6 +92,14 @@ class CarInterface(CarInterfaceBase):
               dat = bytes(msg.dat)
               if len(dat) >= 3:
                 self.CS.gas_raw_277 = int.from_bytes(dat[1:3], "big")
+
+            elif msg.src == 1 and msg.address == 0x037:
+              dat = bytes(msg.dat)
+              if len(dat) >= 5:
+                rpm = int.from_bytes(dat[3:5], "big")
+                self.CS.engine_rpm_raw_037 = (
+                  0 if rpm == 0xFFFF else rpm
+                )
       except Exception:
         pass
 

@@ -20,7 +20,7 @@ except ImportError:
       return False
 
 
-# V2.5X HEV curve hydraulic support plus neutral propulsion handoff.
+# V3.3R: V3.0/V3.2R baseline with stock-derived release, hold, and softer highway braking.
 #
 # V2.5R keeps V2.5P/Q's explicit stock-observed 0x273 state mapping and
 # 0x21 -> 0x31 -> 0x30 stop-and-go states, but changes command arbitration:
@@ -76,11 +76,94 @@ V25R_URGENT_PLANNER_DECEL = 0.45
 V25R_URGENT_HARD_DECEL = 0.70
 V25R_URGENT_CLOSING_SPEED = 2.5     # m/s
 V25R_URGENT_TTC = 7.0               # seconds
-V25R_URGENT_BRAKE_MAX = 0.65
+V25R_URGENT_BRAKE_MAX = 0.45
 
 # Planner-primary target with only a small same-direction PID allowance.
 V25R_PID_BRAKE_BLEND = 0.25
 V25R_PID_BRAKE_ALLOWANCE = 0.08
+
+# V3.0 early-progressive highway lead braking.
+V30_HIGHWAY_MIN_SPEED = 8.0
+V30_NORMAL_ENTRY_MIN = 0.12
+V30_NORMAL_ENTRY_MAX = 0.20
+V30_NORMAL_BRAKE_CAP_MIN = 0.25
+V30_NORMAL_BRAKE_CAP_MAX = 0.30
+V30_BRAKE_STEP_UP = 0.006
+V30_BRAKE_STEP_UP_URGENT = 0.015
+V30_HANDOFF_PID_ACCEL = 0.15
+V30_HANDOFF_AEGO_MAX = -0.08
+V30_HANDOFF_FRAMES = 3
+V30_HANDOFF_STEP_DOWN = 0.030
+V30_REENTRY_BLOCK_FRAMES = 30
+
+# V3.2R isolated low-speed ECU wake/handoff.
+#
+# This is intentionally separate from the V3.0 highway and curve logic:
+#   * V3.0 hydraulic entry, caps, handoff and curve agreement stay unchanged.
+#   * The outgoing fake lead bit is allowed only below 30.6 km/h.
+#   * It first arms at exactly zero desired-speed offset.
+#   * Positive target still requires measured deceleration to fade, retaining
+#     V3.0's -0.10 m/s² aEgo gate instead of pushing through active regen.
+V32R_LOW_SPEED_MAX = 8.5
+V32R_REGEN_NEUTRAL_DWELL_FRAMES = 50   # 0.50 s at 100 Hz
+V32R_LOW_SPEED_ARM_FRAMES = 30         # 0.30 s lead-bit-only neutral stage
+V32R_LOW_SPEED_ACCEL_CAP = 0.10
+V32R_LOW_SPEED_OFFSET_CAP = 0.18
+V32R_LOW_SPEED_OFFSET_STEP_UP = 0.003
+V32R_DEPARTING_LEAD_VREL = 0.40
+V32R_DEPARTING_LEAD_DREL = 3.0
+V32R_DEPARTING_ACCEL_CAP = 0.12
+V32R_DEPARTING_OFFSET_CAP = 0.20
+V32R_DEPARTING_OFFSET_STEP_UP = 0.004
+V32R_NONBLOCKING_LEAD_DISTANCE = 20.0
+V32R_NONBLOCKING_LEAD_VREL = -0.50
+V32R_LOW_SPEED_OVERSHOOT_AEGO = 0.45
+V32R_OVERSHOOT_BLOCK_FRAMES = 50
+
+# V3.3R stock-derived safety layers.
+#
+# The confirmed engine RPM signal is diagnostic only. These safeguards use
+# planner direction, target slope, hydraulic state, trusted lead motion, and
+# actual vehicle acceleration because the logged launch happened at 0 RPM.
+V33R_LOW_SPEED_ENGAGEMENT_MAX = 4.17
+V33R_LOW_SPEED_ENGAGEMENT_GUARD_FRAMES = 50
+
+V33R_STOP_LEAD_TRUST_FRAMES = 3
+V33R_STOP_HOLD_MAX_EGO = 0.15
+V33R_STOP_HOLD_MIN_DISTANCE = 1.0
+V33R_STOP_HOLD_MAX_DISTANCE = 12.0
+V33R_STOPPED_LEAD_MAX_SPEED = 0.50
+V33R_HOLD_RESUME_LEAD_SPEED = 0.35
+V33R_HOLD_RESUME_FRAMES = 6
+V33R_CREEP_GUARD_MAX_EGO = 1.00
+V33R_CREEP_GUARD_MIN_CLOSING = 0.05
+V33R_CREEP_ENTRY_FRAMES = 2
+V33R_CREEP_BRAKE_FLOOR = 0.18
+
+V33R_RELEASE_FREEZE_FRAMES = 30
+V33R_RELEASE_LEAD_HOLD_FRAMES = 80
+V33R_RELEASE_PROPULSION_BLOCK_FRAMES = 60
+V33R_TARGET_SLOPE_UNLOCK_FRAMES = 30
+V33R_TARGET_RETURN_STEP = 0.010
+V33R_TARGET_SLOPE_BRAKE = 0.02
+V33R_TARGET_SLOPE_AEGO = -0.08
+V33R_PROPULSION_AEGO_MIN = -0.05
+
+V33R_OVERSHOOT_AEGO = 0.35
+V33R_OVERSHOOT_CONFIRM_FRAMES = 2
+V33R_OVERSHOOT_BLOCK_FRAMES = 60
+
+V33R_EARLY_HIGHWAY_MIN_SPEED = 8.0
+V33R_EARLY_HIGHWAY_CLOSING = 1.0
+V33R_EARLY_HIGHWAY_TTC = 18.0
+V33R_EARLY_HIGHWAY_TIME_GAP = 3.0
+V33R_EARLY_HIGHWAY_PLANNER_BRAKE = 0.05
+
+V33R_AEGO_FILTER_ALPHA = 0.20
+V33R_DECEL_GOVERNOR_START = -0.90
+V33R_DECEL_GOVERNOR_CRITICAL_TTC = 3.0
+V33R_DECEL_GOVERNOR_CRITICAL_CLOSING = 3.0
+V33R_DECEL_GOVERNOR_STEP_DOWN = 0.015
 
 # Stock-like 0x01 desired-speed shaping. Positive acceleration follows the
 # previously successful continuous target strategy, while negative planner
@@ -228,11 +311,27 @@ def v25w_curve_brake_cap(v_ego):
 
 
 def v25l_hydraulic_entry(v_ego):
-  """Require stronger planner deceleration before 0x21 at road speed."""
+  """Legacy speed-dependent hydraulic entry curve."""
   return float(interp(
     v_ego,
     [0.0, 4.0, 15.0, 25.0, 35.0],
     [0.25, 0.25, 0.38, 0.47, 0.52],
+  ))
+
+
+def v30_progressive_hydraulic_entry(v_ego):
+  return float(interp(
+    v_ego,
+    [8.0, 15.0, 25.0, 35.0],
+    [V30_NORMAL_ENTRY_MIN, 0.14, 0.17, V30_NORMAL_ENTRY_MAX],
+  ))
+
+
+def v30_progressive_brake_cap(v_ego):
+  return float(interp(
+    v_ego,
+    [8.0, 15.0, 25.0, 35.0],
+    [V30_NORMAL_BRAKE_CAP_MIN, 0.27, 0.29, V30_NORMAL_BRAKE_CAP_MAX],
   ))
 
 
@@ -338,6 +437,23 @@ class CarController():
     self.v25r_lead_accel_counter = 0
     self.v25r_lead_loss_counter = 0
     self.v25r_urgent_brake = False
+    self.v30_handoff_counter = 0
+    self.v30_handoff_active = False
+
+    # V3.2R low-speed-only handoff state.
+    self.v32r_neutral_until_frame = 0
+    self.v32r_low_speed_arm_start_frame = -1000000
+    self.v32r_overshoot_block_until_frame = 0
+
+    self.v33r_low_speed_guard_until_frame = 0
+    self.v33r_stopped_lead_counter = 0
+    self.v33r_hold_resume_counter = 0
+    self.v33r_release_freeze_until_frame = 0
+    self.v33r_release_lead_until_frame = 0
+    self.v33r_target_slope_unlock_frame = 0
+    self.v33r_overshoot_counter = 0
+    self.v33r_overshoot_block_until_frame = 0
+    self.v33r_filtered_aego = 0.0
 
     self.v25r_plan_source = ""
     self.v25r_plan_accel = 0.0
@@ -416,6 +532,22 @@ class CarController():
       self.v25r_lead_accel_counter = 0
       self.v25r_lead_loss_counter = 0
       self.v25r_urgent_brake = False
+      self.v30_handoff_counter = 0
+      self.v30_handoff_active = False
+      self.v32r_neutral_until_frame = frame
+      self.v32r_low_speed_arm_start_frame = -1000000
+      self.v32r_overshoot_block_until_frame = frame
+      self.v33r_low_speed_guard_until_frame = (
+        frame + V33R_LOW_SPEED_ENGAGEMENT_GUARD_FRAMES
+      )
+      self.v33r_stopped_lead_counter = 0
+      self.v33r_hold_resume_counter = 0
+      self.v33r_release_freeze_until_frame = frame
+      self.v33r_release_lead_until_frame = frame
+      self.v33r_target_slope_unlock_frame = frame
+      self.v33r_overshoot_counter = 0
+      self.v33r_overshoot_block_until_frame = frame
+      self.v33r_filtered_aego = float(CS.out.aEgo)
 
     self.prev_enabled = enabled  # Save enabled state for the next control cycle
 
@@ -592,6 +724,12 @@ class CarController():
       lead_entry_planner, lead_normal_cap, lead_accel_cap = (
         v25r_distance_profile(distance_val)
       )
+      lead_hydraulic_entry = lead_entry_planner
+      if CS.out.vEgo >= V30_HIGHWAY_MIN_SPEED:
+        lead_hydraulic_entry = max(
+          lead_entry_planner,
+          v30_progressive_hydraulic_entry(CS.out.vEgo),
+        )
 
       # The same setting is now delivered to the MPC by
       # carState.distanceLines; no Params write is needed here.
@@ -631,6 +769,55 @@ class CarController():
         selected_lead_speed <= V25X_SC_MAX_LEAD_SPEED
       )
 
+      stopped_lead_candidate = (
+        selected_lead_status and
+        bool(lead) and
+        (planner_reports_lead if plan_fresh else True) and
+        V33R_STOP_HOLD_MIN_DISTANCE <= selected_lead_drel <=
+          V33R_STOP_HOLD_MAX_DISTANCE and
+        selected_lead_speed <= V33R_STOPPED_LEAD_MAX_SPEED
+      )
+      if stopped_lead_candidate:
+        self.v33r_stopped_lead_counter = min(
+          self.v33r_stopped_lead_counter + 1,
+          V33R_STOP_LEAD_TRUST_FRAMES,
+        )
+      else:
+        self.v33r_stopped_lead_counter = 0
+
+      v33r_trusted_stopped_lead = (
+        self.v33r_stopped_lead_counter >=
+        V33R_STOP_LEAD_TRUST_FRAMES
+      )
+      v33r_creep_stop_guard = (
+        v33r_trusted_stopped_lead and
+        not CS.out.standstill and
+        V25L_MIN_MOVING_SPEED < CS.out.vEgo <=
+          V33R_CREEP_GUARD_MAX_EGO and
+        closing_speed >= V33R_CREEP_GUARD_MIN_CLOSING
+      )
+      v33r_early_highway_entry = (
+        relevant_lead and
+        selected_lead_status and
+        CS.out.vEgo >= V33R_EARLY_HIGHWAY_MIN_SPEED and
+        closing_speed >= V33R_EARLY_HIGHWAY_CLOSING and
+        ttc <= V33R_EARLY_HIGHWAY_TTC and
+        selected_lead_drel <= max(
+          35.0,
+          CS.out.vEgo * V33R_EARLY_HIGHWAY_TIME_GAP,
+        ) and
+        planner_brake_request >= V33R_EARLY_HIGHWAY_PLANNER_BRAKE
+      )
+
+      self.v33r_filtered_aego += V33R_AEGO_FILTER_ALPHA * (
+        float(CS.out.aEgo) - self.v33r_filtered_aego
+      )
+      v33r_critical_closing = (
+        selected_lead_status and
+        closing_speed >= V33R_DECEL_GOVERNOR_CRITICAL_CLOSING and
+        ttc <= V33R_DECEL_GOVERNOR_CRITICAL_TTC
+      )
+
       # -----------------------------
       # ACC_BRAKE / 0x271 state map from logs
       # -----------------------------
@@ -663,6 +850,25 @@ class CarController():
       )
       moving_allowed = control_allowed and not CS.out.standstill
 
+      def start_v33r_staged_release():
+        self.v33r_release_freeze_until_frame = max(
+          self.v33r_release_freeze_until_frame,
+          frame + V33R_RELEASE_FREEZE_FRAMES,
+        )
+        self.v33r_release_lead_until_frame = max(
+          self.v33r_release_lead_until_frame,
+          frame + V33R_RELEASE_LEAD_HOLD_FRAMES,
+        )
+        self.v33r_target_slope_unlock_frame = max(
+          self.v33r_target_slope_unlock_frame,
+          frame + V33R_TARGET_SLOPE_UNLOCK_FRAMES,
+        )
+        self.v25l_propulsion_block_until_frame = max(
+          self.v25l_propulsion_block_until_frame,
+          frame + V33R_RELEASE_PROPULSION_BLOCK_FRAMES,
+        )
+        self.v25l_speed_offset = min(0.0, self.v25l_speed_offset)
+
       def clear_hydraulic(reentry=True, propulsion_dwell=True):
         self.v25l_apply_brake = 0.0
         self.v25l_brake_target = 0.0
@@ -672,6 +878,8 @@ class CarController():
         self.v25o_brake_mode = V25O_BRAKE_MODE_NONE
         self.v25r_release_counter = 0
         self.v25r_urgent_brake = False
+        self.v30_handoff_counter = 0
+        self.v30_handoff_active = False
         if reentry:
           self.v25l_brake_reentry_frame = frame + V25L_REENTRY_BLOCK_FRAMES
         if propulsion_dwell:
@@ -679,30 +887,45 @@ class CarController():
             frame + V25L_PROPULSION_DWELL_FRAMES
           )
 
-      # A latched 0x30 hold is released only by a safety exit or a real positive
-      # planner request. Lead loss alone does not release the stopped vehicle.
+      # Release 0x30 only when the lead itself moves and the planner remains
+      # positive. A transient downstream PID output cannot release the hold.
       if self.v25o_stop_hold:
         hold_safety_exit = not control_allowed
-        hold_resume = (
+        hold_resume_candidate = (
+          selected_lead_status and
+          bool(lead) and
+          (planner_reports_lead if plan_fresh else True) and
+          selected_lead_speed >= V33R_HOLD_RESUME_LEAD_SPEED and
           (
-            planner_accel_request >= V25O_SNG_RELEASE_ACCEL and
-            apply_accel >= 0.0
+            planner_accel_request >= V25O_SNG_RELEASE_ACCEL
+            if plan_fresh else
+            apply_accel >= V25O_SNG_RELEASE_ACCEL
           )
-          if plan_fresh else
-          apply_accel >= V25O_SNG_RELEASE_ACCEL
+        )
+        if hold_resume_candidate:
+          self.v33r_hold_resume_counter = min(
+            self.v33r_hold_resume_counter + 1,
+            V33R_HOLD_RESUME_FRAMES,
+          )
+        else:
+          self.v33r_hold_resume_counter = 0
+
+        hold_resume = (
+          self.v33r_hold_resume_counter >= V33R_HOLD_RESUME_FRAMES
         )
 
         if hold_safety_exit or hold_resume:
           self.v25o_stop_hold = False
+          self.v33r_hold_resume_counter = 0
           clear_hydraulic(reentry=False, propulsion_dwell=False)
           if hold_safety_exit:
             self.v25o_sng_armed = False
             self.v25o_sng_release_frames = 0
+            self.v33r_release_lead_until_frame = frame
+            self.v33r_release_freeze_until_frame = frame
           else:
-            # Stock logs briefly use 0x01 with pump -0.4/+0.4 and neutral C8
-            # while releasing 0x30. Keep the stop armed until the car moves so
-            # a withdrawn launch request can safely re-enter hold.
             self.v25o_sng_release_frames = V25O_SNG_RELEASE_FRAMES
+            start_v33r_staged_release()
         else:
           self.v25l_brake_active = True
           self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
@@ -724,28 +947,83 @@ class CarController():
           self.v25l_brake_target = 0.0
           self.v25l_speed_offset = 0.0
 
-      # Enter standstill hold only after a trusted-lead hydraulic approach has
-      # armed stop-and-go. No-lead 0x21 is explicitly unable to arm this path.
-      if (
-        not sng_release_active and
-        not self.v25o_stop_hold and
+      planner_allows_hold = (
+        planner_accel_request < V25O_SNG_RELEASE_ACCEL
+        if plan_fresh else
+        apply_accel < V25O_SNG_RELEASE_ACCEL
+      )
+      direct_standstill_hold = (
+        control_allowed and
+        CS.out.vEgo <= V33R_STOP_HOLD_MAX_EGO and
+        v33r_trusted_stopped_lead and
+        planner_allows_hold
+      )
+      approached_standstill_hold = (
         self.v25o_sng_armed and
         CS.out.standstill and
         control_allowed and
-        apply_accel < V25O_SNG_RELEASE_ACCEL
+        planner_allows_hold
+      )
+      if (
+        not sng_release_active and
+        not self.v25o_stop_hold and
+        (direct_standstill_hold or approached_standstill_hold)
       ):
         self.v25o_stop_hold = True
+        self.v25o_sng_armed = True
         self.v25l_brake_active = True
         self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
         self.v25l_apply_brake = V25O_SNG_HOLD_BRAKE
         self.v25l_brake_target = V25O_SNG_HOLD_BRAKE
         self.v25l_speed_offset = 0.0
+        self.v33r_release_lead_until_frame = max(
+          self.v33r_release_lead_until_frame,
+          frame + V33R_RELEASE_LEAD_HOLD_FRAMES,
+        )
 
       soft_releasing_hydraulic = False
+      hydraulic_handoff_release = False
 
       if not sng_release_active and not self.v25o_stop_hold and self.v25l_brake_active:
         safety_hard_release = not moving_allowed
         force_soft_release = False
+
+        v30_handoff_candidate = (
+          self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD and
+          CS.out.vEgo >= V30_HIGHWAY_MIN_SPEED and
+          plan_fresh and
+          relevant_lead and
+          not urgent_closing and
+          not self.v25r_urgent_brake and
+          not self.v25o_sng_armed and
+          not stop_completion_active and
+          planner_brake_request < lead_hydraulic_entry and
+          apply_accel >= V30_HANDOFF_PID_ACCEL and
+          CS.out.aEgo <= V30_HANDOFF_AEGO_MAX
+        )
+
+        if (
+          v30_handoff_candidate and
+          not self.v30_handoff_active
+        ):
+          self.v30_handoff_counter = min(
+            self.v30_handoff_counter + 1,
+            V30_HANDOFF_FRAMES,
+          )
+          if (
+            self.v30_handoff_counter >=
+            V30_HANDOFF_FRAMES
+          ):
+            self.v30_handoff_active = True
+        elif not self.v30_handoff_active:
+          self.v30_handoff_counter = 0
+
+        if self.v30_handoff_active:
+          # Complete the hydraulic release once latched. The existing
+          # planner-negative desired-speed path will take over as regen after
+          # hydraulic_req clears; positive propulsion remains dwell-blocked.
+          force_soft_release = True
+          hydraulic_handoff_release = True
 
         if self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD:
           # Raw lead loss is a safety exit. A downstream positive PID request
@@ -844,9 +1122,14 @@ class CarController():
           )
           soft_releasing_hydraulic = True
           self.v25l_brake_target = V25L_BRAKE_MIN
+          release_step = (
+            V30_HANDOFF_STEP_DOWN
+            if hydraulic_handoff_release else
+            V25R_BRAKE_STEP_DOWN
+          )
           self.v25l_apply_brake = max(
             0.0,
-            self.v25l_apply_brake - V25R_BRAKE_STEP_DOWN,
+            self.v25l_apply_brake - release_step,
           )
 
           if (
@@ -854,24 +1137,41 @@ class CarController():
             self.v25l_apply_brake <= V25L_BRAKE_MIN
           ):
             self.v25o_sng_armed = False
+            was_v30_handoff = self.v30_handoff_active
+            start_v33r_staged_release()
             clear_hydraulic()
+            if was_v30_handoff:
+              self.v25l_brake_reentry_frame = (
+                frame + V30_REENTRY_BLOCK_FRAMES
+              )
         else:
           self.v25r_release_counter = 0
 
       if not sng_release_active and not self.v25o_stop_hold and not self.v25l_brake_active:
         stopped_lead_reentry = (
-          stopped_lead_approach and
-          planner_brake_request >= V25U_STOP_LEAD_MIN_BRAKE
+          (
+            stopped_lead_approach and
+            planner_brake_request >= V25U_STOP_LEAD_MIN_BRAKE
+          ) or
+          v33r_creep_stop_guard
         )
         lead_entry = (
           moving_allowed and
-          relevant_lead and
+          (relevant_lead or v33r_creep_stop_guard) and
           (
-            planner_brake_request >= lead_entry_planner or
-            stopped_lead_reentry
+            planner_brake_request >= lead_hydraulic_entry or
+            stopped_lead_reentry or
+            v33r_early_highway_entry
           ) and
-          CS.out.vEgo > V25L_MIN_ENTRY_SPEED and
-          frame > self.block_brake_until_frame and
+          CS.out.vEgo > (
+            V25L_MIN_MOVING_SPEED
+            if v33r_creep_stop_guard else
+            V25L_MIN_ENTRY_SPEED
+          ) and
+          (
+            frame > self.block_brake_until_frame or
+            v33r_creep_stop_guard
+          ) and
           (
             frame >= self.v25l_brake_reentry_frame or
             stopped_lead_reentry
@@ -905,11 +1205,17 @@ class CarController():
         )
 
         if lead_entry:
+          required_entry_frames = (
+            V33R_CREEP_ENTRY_FRAMES
+            if v33r_creep_stop_guard else
+            V25R_LEAD_ENTRY_FRAMES
+          )
           self.v25l_brake_entry_counter = min(
             self.v25l_brake_entry_counter + 1,
-            V25R_LEAD_ENTRY_FRAMES,
+            required_entry_frames,
           )
         else:
+          required_entry_frames = V25R_LEAD_ENTRY_FRAMES
           self.v25l_brake_entry_counter = 0
 
         if urgent_entry:
@@ -935,7 +1241,7 @@ class CarController():
           self.v25o_nolead_entry_counter >= V25R_URGENT_ENTRY_FRAMES
         )
         normal_confirmed = (
-          self.v25l_brake_entry_counter >= V25R_LEAD_ENTRY_FRAMES
+          self.v25l_brake_entry_counter >= required_entry_frames
         )
 
         if urgent_confirmed or normal_confirmed:
@@ -948,6 +1254,16 @@ class CarController():
           self.v25o_nolead_entry_counter = 0
           self.v25r_release_counter = 0
           self.v25l_speed_offset = 0.0
+          if v33r_creep_stop_guard:
+            self.v25o_sng_armed = True
+            self.v25l_apply_brake = max(
+              self.v25l_apply_brake,
+              V33R_CREEP_BRAKE_FLOOR,
+            )
+            self.v25l_brake_target = max(
+              self.v25l_brake_target,
+              V33R_CREEP_BRAKE_FLOOR,
+            )
 
         elif (
           curve_entry and
@@ -995,11 +1311,16 @@ class CarController():
             if urgent_closing or planner_brake_request >= V25R_URGENT_HARD_DECEL:
               self.v25r_urgent_brake = True
 
-            requested_cap = (
-              V25R_URGENT_BRAKE_MAX
-              if self.v25r_urgent_brake else
-              lead_normal_cap
-            )
+            if self.v25r_urgent_brake:
+              requested_cap = V25R_URGENT_BRAKE_MAX
+            elif CS.out.vEgo >= V30_HIGHWAY_MIN_SPEED:
+              requested_cap = min(
+                lead_normal_cap,
+                v30_progressive_brake_cap(CS.out.vEgo),
+              )
+            else:
+              requested_cap = lead_normal_cap
+
             brake_cap = min(
               requested_cap,
               v25l_low_speed_brake_cap(CS.out.vEgo),
@@ -1034,6 +1355,23 @@ class CarController():
             V25L_BRAKE_MIN,
             brake_cap,
           ))
+          if v33r_creep_stop_guard:
+            raw_target_brake = max(
+              raw_target_brake,
+              V33R_CREEP_BRAKE_FLOOR,
+            )
+          if (
+            self.v33r_filtered_aego <= V33R_DECEL_GOVERNOR_START and
+            not v33r_critical_closing
+          ):
+            raw_target_brake = min(
+              raw_target_brake,
+              max(
+                V25L_BRAKE_MIN,
+                self.v25l_apply_brake -
+                V33R_DECEL_GOVERNOR_STEP_DOWN,
+              ),
+            )
           if stop_completion_active:
             raw_target_brake = max(
               raw_target_brake,
@@ -1052,14 +1390,22 @@ class CarController():
             V25L_BRAKE_MIN,
             brake_cap,
           ))
-          self.v25l_apply_brake = min(
-            brake_cap,
-            v25r_rate_limit_brake(
+          if self.v25l_brake_target > self.v25l_apply_brake:
+            v30_step_up = (
+              V30_BRAKE_STEP_UP_URGENT
+              if self.v25r_urgent_brake else
+              V30_BRAKE_STEP_UP
+            )
+            rate_limited_brake = min(
               self.v25l_brake_target,
-              self.v25l_apply_brake,
-              urgent=self.v25r_urgent_brake,
-            ),
-          )
+              self.v25l_apply_brake + v30_step_up,
+            )
+          else:
+            rate_limited_brake = max(
+              self.v25l_brake_target,
+              self.v25l_apply_brake - V25R_BRAKE_STEP_DOWN,
+            )
+          self.v25l_apply_brake = min(brake_cap, rate_limited_brake)
 
         if (
           self.v25o_brake_mode == V25O_BRAKE_MODE_LEAD and
@@ -1070,7 +1416,8 @@ class CarController():
             (
               stopped_lead_approach and
               planner_brake_request >= V25U_STOP_LEAD_MIN_BRAKE
-            )
+            ) or
+            v33r_creep_stop_guard
           )
         ):
           self.v25o_sng_armed = True
@@ -1124,9 +1471,40 @@ class CarController():
       # The planner selects direction. The downstream PID cannot request gas
       # while the lead planner still requests slowing. This is the key fix for
       # brake -> rev/no acceleration -> jump -> brake oscillation.
+      release_freeze_active = (
+        enabled and frame < self.v33r_release_freeze_until_frame
+      )
+      release_lead_active = (
+        enabled and frame < self.v33r_release_lead_until_frame
+      )
+      low_speed_engagement_guard = (
+        enabled and
+        CS.out.vEgo < V33R_LOW_SPEED_ENGAGEMENT_MAX and
+        frame < self.v33r_low_speed_guard_until_frame
+      )
+
+      target_slope_lock = (
+        hydraulic_req or
+        planner_brake_request >= V33R_TARGET_SLOPE_BRAKE or
+        release_freeze_active or
+        (
+          self.v25l_speed_offset < -V25V_REGEN_OFFSET_EPS and
+          CS.out.aEgo <= V33R_TARGET_SLOPE_AEGO
+        )
+      )
+      if target_slope_lock:
+        self.v33r_target_slope_unlock_frame = max(
+          self.v33r_target_slope_unlock_frame,
+          frame + V33R_TARGET_SLOPE_UNLOCK_FRAMES,
+        )
+
       propulsion_blocked = (
         hydraulic_req or
-        frame < self.v25l_propulsion_block_until_frame
+        frame < self.v25l_propulsion_block_until_frame or
+        frame < self.v33r_target_slope_unlock_frame or
+        frame < self.v33r_overshoot_block_until_frame or
+        release_freeze_active or
+        low_speed_engagement_guard
       )
 
       if plan_fresh:
@@ -1145,17 +1523,27 @@ class CarController():
       else:
         effective_accel = apply_accel
 
-      # Any active regen/deceleration command extends a neutral dwell. This
-      # prevents the next positive request from waking the engine while the
-      # vehicle is still visibly/physically regenerating.
-      if (
+      # Preserve V3.0's normal 0.30 s regen-release dwell at every speed.
+      # Below 30.6 km/h, add an isolated 0.50 s neutral stage before the
+      # low-speed ECU lead-bit wake can begin. This never changes highway
+      # desired-speed shaping.
+      regen_or_brake_active = (
+        hydraulic_req or
+        sng_release_active or
         effective_accel <= -V25L_DECEL_DEADBAND or
         self.v25l_speed_offset < -V25V_REGEN_OFFSET_EPS
-      ):
+      )
+      if regen_or_brake_active:
         self.v25v_regen_release_until_frame = max(
           self.v25v_regen_release_until_frame,
           frame + V25V_REGEN_RELEASE_DWELL_FRAMES,
         )
+        if CS.out.vEgo < V32R_LOW_SPEED_MAX:
+          self.v32r_neutral_until_frame = max(
+            self.v32r_neutral_until_frame,
+            frame + V32R_REGEN_NEUTRAL_DWELL_FRAMES,
+          )
+          self.v32r_low_speed_arm_start_frame = -1000000
 
       if planner_reports_lead and plan_fresh:
         if (
@@ -1175,7 +1563,140 @@ class CarController():
         self.v25r_lead_accel_counter >= V25R_LEAD_ACCEL_CONFIRM_FRAMES
       )
 
-      if not control_allowed or hydraulic_req or sng_release_active:
+      # V3.2R low-speed lead classification is used only to decide whether the
+      # outgoing ECU wake bit may be used. It does not alter planner/radar lead
+      # state and cannot enter hydraulic braking.
+      positive_agreement = (
+        (
+          planner_accel_request >= V25L_ACCEL_ENTRY and
+          apply_accel > 0.0
+        )
+        if plan_fresh else
+        apply_accel >= V25L_ACCEL_ENTRY
+      )
+      departing_lead = (
+        selected_lead_status and
+        selected_lead_vrel >= V32R_DEPARTING_LEAD_VREL and
+        selected_lead_drel >= V32R_DEPARTING_LEAD_DREL
+      )
+      distant_nonclosing_lead = (
+        selected_lead_status and
+        selected_lead_drel >= V32R_NONBLOCKING_LEAD_DISTANCE and
+        selected_lead_vrel >= V32R_NONBLOCKING_LEAD_VREL
+      )
+      lead_nonblocking_for_propulsion = (
+        not selected_lead_status or
+        departing_lead or
+        distant_nonclosing_lead
+      )
+      low_speed_propulsion_request = (
+        control_allowed and
+        not hydraulic_req and
+        not sng_release_active and
+        not self.v25o_stop_hold and
+        CS.out.vEgo < V32R_LOW_SPEED_MAX and
+        positive_agreement and
+        lead_nonblocking_for_propulsion
+      )
+
+      low_speed_arm_eligible = (
+        low_speed_propulsion_request and
+        frame >= self.v32r_neutral_until_frame and
+        frame >= self.v32r_overshoot_block_until_frame and
+        self.v25l_speed_offset >= -V25V_REGEN_OFFSET_EPS
+      )
+      if not low_speed_arm_eligible:
+        self.v32r_low_speed_arm_start_frame = -1000000
+      elif self.v32r_low_speed_arm_start_frame < 0:
+        self.v32r_low_speed_arm_start_frame = frame
+
+      low_speed_arm_active = (
+        low_speed_arm_eligible and
+        frame - self.v32r_low_speed_arm_start_frame <
+        V32R_LOW_SPEED_ARM_FRAMES
+      )
+      low_speed_arm_complete = (
+        low_speed_arm_eligible and
+        not low_speed_arm_active
+      )
+
+      unexpected_positive_accel = (
+        control_allowed and
+        CS.out.aEgo >= V33R_OVERSHOOT_AEGO and
+        (
+          self.v25l_speed_offset <= V25V_REGEN_OFFSET_EPS or
+          planner_accel_request <= V25R_PLANNER_ACCEL_ENTRY
+        )
+      )
+      if unexpected_positive_accel:
+        self.v33r_overshoot_counter = min(
+          self.v33r_overshoot_counter + 1,
+          V33R_OVERSHOOT_CONFIRM_FRAMES,
+        )
+      else:
+        self.v33r_overshoot_counter = 0
+
+      if (
+        self.v33r_overshoot_counter >=
+        V33R_OVERSHOOT_CONFIRM_FRAMES
+      ):
+        self.v25l_speed_offset = 0.0
+        self.v33r_overshoot_block_until_frame = (
+          frame + V33R_OVERSHOOT_BLOCK_FRAMES
+        )
+        self.v33r_target_slope_unlock_frame = max(
+          self.v33r_target_slope_unlock_frame,
+          frame + V33R_TARGET_SLOPE_UNLOCK_FRAMES,
+        )
+        self.v33r_release_lead_until_frame = max(
+          self.v33r_release_lead_until_frame,
+          frame + V33R_RELEASE_LEAD_HOLD_FRAMES,
+        )
+        self.v33r_overshoot_counter = 0
+
+        # Never add no-lead braking. A persistent close stopped lead may
+        # re-enter the verified 0x31/0x30 stop path.
+        if (
+          v33r_trusted_stopped_lead and
+          CS.out.vEgo <= V33R_CREEP_GUARD_MAX_EGO
+        ):
+          self.v25o_sng_armed = True
+          self.v25l_brake_active = True
+          self.v25o_brake_mode = V25O_BRAKE_MODE_LEAD
+          self.v25l_apply_brake = max(
+            self.v25l_apply_brake,
+            V33R_CREEP_BRAKE_FLOOR,
+          )
+          self.v25l_brake_target = max(
+            self.v25l_brake_target,
+            V33R_CREEP_BRAKE_FLOOR,
+          )
+          hydraulic_req = True
+
+      low_speed_overshoot = (
+        CS.out.vEgo < V32R_LOW_SPEED_MAX and
+        self.v25l_speed_offset > 0.0 and
+        CS.out.aEgo >= V32R_LOW_SPEED_OVERSHOOT_AEGO
+      )
+      if low_speed_overshoot:
+        self.v25l_speed_offset = 0.0
+        self.v32r_overshoot_block_until_frame = (
+          frame + V32R_OVERSHOOT_BLOCK_FRAMES
+        )
+        self.v32r_neutral_until_frame = max(
+          self.v32r_neutral_until_frame,
+          frame + V32R_REGEN_NEUTRAL_DWELL_FRAMES,
+        )
+        self.v32r_low_speed_arm_start_frame = -1000000
+
+      if not control_allowed:
+        self.v25l_speed_offset = 0.0
+        self.v33r_release_freeze_until_frame = frame
+        self.v33r_release_lead_until_frame = frame
+        self.v33r_target_slope_unlock_frame = frame
+        self.v33r_overshoot_counter = 0
+
+      elif hydraulic_req or sng_release_active:
         self.v25l_speed_offset = 0.0
 
       elif (
@@ -1197,32 +1718,58 @@ class CarController():
             self.v25l_speed_offset - V25L_DECEL_OFFSET_STEP_DOWN,
           )
         else:
-          self.v25l_speed_offset = min(
-            target_offset,
-            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
-          )
+          if (
+            frame >= self.v33r_target_slope_unlock_frame and
+            CS.out.aEgo >= V33R_PROPULSION_AEGO_MIN
+          ):
+            self.v25l_speed_offset = min(
+              target_offset,
+              self.v25l_speed_offset + V33R_TARGET_RETURN_STEP,
+            )
 
       elif (
         effective_accel >= V25L_ACCEL_ENTRY and
         not propulsion_blocked and
         frame >= self.v25v_regen_release_until_frame and
-        CS.out.aEgo >= V25V_ACCEL_AEGO_MIN and
+        CS.out.aEgo >= V33R_PROPULSION_AEGO_MIN and
         (
           not planner_reports_lead or
           not plan_fresh or
-          lead_accel_confirmed
+          lead_accel_confirmed or
+          low_speed_propulsion_request
+        ) and
+        (
+          CS.out.vEgo >= V32R_LOW_SPEED_MAX or
+          low_speed_arm_complete
         )
       ):
-        accel_cap = (
-          lead_accel_cap
-          if planner_reports_lead and plan_fresh else
-          V25L_ACCEL_CAP
-        )
-        offset_cap = (
-          0.30
-          if planner_reports_lead and plan_fresh else
-          V25L_ACCEL_OFFSET_MAX
-        )
+        # At and above 30.6 km/h this is the exact V3.0 cap/ramp selection.
+        # Only the new low-speed path receives the smaller V3.2R authority.
+        if CS.out.vEgo < V32R_LOW_SPEED_MAX:
+          if departing_lead:
+            accel_cap = max(
+              lead_accel_cap,
+              V32R_DEPARTING_ACCEL_CAP,
+            )
+            offset_cap = V32R_DEPARTING_OFFSET_CAP
+            accel_step_up = V32R_DEPARTING_OFFSET_STEP_UP
+          else:
+            accel_cap = V32R_LOW_SPEED_ACCEL_CAP
+            offset_cap = V32R_LOW_SPEED_OFFSET_CAP
+            accel_step_up = V32R_LOW_SPEED_OFFSET_STEP_UP
+        else:
+          accel_cap = (
+            lead_accel_cap
+            if planner_reports_lead and plan_fresh else
+            V25L_ACCEL_CAP
+          )
+          offset_cap = (
+            0.30
+            if planner_reports_lead and plan_fresh else
+            V25L_ACCEL_OFFSET_MAX
+          )
+          accel_step_up = V25L_ACCEL_OFFSET_STEP_UP
+
         target_offset = min(
           offset_cap,
           min(effective_accel, accel_cap) * t_lookup,
@@ -1231,12 +1778,12 @@ class CarController():
         if self.v25l_speed_offset < 0.0:
           self.v25l_speed_offset = min(
             0.0,
-            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
+            self.v25l_speed_offset + V33R_TARGET_RETURN_STEP,
           )
         elif target_offset > self.v25l_speed_offset:
           self.v25l_speed_offset = min(
             target_offset,
-            self.v25l_speed_offset + V25L_ACCEL_OFFSET_STEP_UP,
+            self.v25l_speed_offset + accel_step_up,
           )
         else:
           self.v25l_speed_offset = max(
@@ -1248,14 +1795,27 @@ class CarController():
         # Planner neutral, unconfirmed acceleration, or regen-release dwell:
         # return to a true zero offset before any positive propulsion.
         if self.v25l_speed_offset < 0.0:
-          self.v25l_speed_offset = min(
-            0.0,
-            self.v25l_speed_offset + V25L_DECEL_OFFSET_STEP_UP,
-          )
+          if (
+            frame >= self.v33r_target_slope_unlock_frame and
+            CS.out.aEgo >= V33R_PROPULSION_AEGO_MIN
+          ):
+            self.v25l_speed_offset = min(
+              0.0,
+              self.v25l_speed_offset + V33R_TARGET_RETURN_STEP,
+            )
         else:
           self.v25l_speed_offset = 0.0
 
-      if self.v25o_stop_hold or sng_release_active:
+      if release_freeze_active:
+        self.v25l_speed_offset = min(0.0, self.v25l_speed_offset)
+
+      if low_speed_arm_active:
+        # ECU wake stage: lead bit only, no positive desired-speed target.
+        self.v25l_speed_offset = 0.0
+
+      if not enabled:
+        des_speed = 0.0
+      elif self.v25o_stop_hold or sng_release_active:
         # Stock stop and pump-release logs keep ACC_CMD at zero.
         des_speed = 0.0
       elif hydraulic_req:
@@ -1287,13 +1847,37 @@ class CarController():
         acc_cmd_is_accel = True
         acc_cmd_is_decel = False
 
+      low_speed_accel_unlock = (
+        enabled and
+        low_speed_propulsion_request and
+        not hydraulic_req and
+        not sng_release_active and
+        not self.v25o_stop_hold and
+        frame >= self.v32r_neutral_until_frame and
+        frame >= self.v32r_overshoot_block_until_frame and
+        (
+          low_speed_arm_active or
+          self.v25l_speed_offset > 0.0
+        )
+      )
+      # Cancel/disabled frames cannot preserve a stale lead bit.
+      lead_for_acc_cmd = bool(
+        enabled and
+        (
+          lead or
+          low_speed_accel_unlock or
+          release_lead_active or
+          self.v25o_stop_hold
+        )
+      )
+
       can_sends.append(  # Add ACC_CMD_HUD message
         dnga_create_accel_command(  # Build 0x273 ACC command frame
           self.packer,  # CAN packer
           CS.cruise_speed,  # OP cruise set speed
           CS.out.cruiseState.available,  # ACC ready/available bit
           enabled,  # OP enabled state
-          lead,  # Lead visible flag
+          lead_for_acc_cmd,  # Real lead or isolated low-speed ECU wake
           des_speed,  # Desired speed command
           acc_cmd_is_accel,  # Explicit stock IS_ACCEL mode bit
           acc_cmd_is_decel,  # Explicit stock IS_DECEL mode bit

@@ -54,7 +54,12 @@ T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 MIN_ACCEL = -3.5
 T_FOLLOW = 1.45
 COMFORT_BRAKE = 2.5  # Same physical comfort-brake value used by Buka staging
-STOP_DISTANCE = 7.0  # Conservative stopped-lead base distance
+STOP_DISTANCE = 7.0  # Solver-generated base; do not change without regeneration
+STOP_DISTANCE_BY_BAR = {
+  1: 5.0,
+  2: 6.0,
+  3: 7.0,
+}
 
 def get_stopped_equivalence_factor(v_lead, v_ego, t_follow=T_FOLLOW):
   # V2.5S: standard moving-lead equivalence. The previous KRKeegan offset
@@ -202,6 +207,8 @@ class LongitudinalMpc:
   def __init__(self, e2e=False):
     self.e2e = e2e
     self.desired_TF = T_FOLLOW
+    self.stop_distance_target = STOP_DISTANCE
+    self.stop_distance_adjustment = 0.0
     self.reset()
     self.source = SOURCES[2]
 
@@ -337,6 +344,14 @@ class LongitudinalMpc:
     else:
       self.desired_TF = 1.65
 
+    # The generated solver contains a fixed 7 m base. Shifting the lead
+    # obstacle by 7-target metres gives a live 5/6/7 m stopped base without
+    # regenerating the old acados solver.
+    self.stop_distance_target = STOP_DISTANCE_BY_BAR[distance_lines]
+    self.stop_distance_adjustment = (
+      STOP_DISTANCE - self.stop_distance_target
+    )
+
   def update(self, carstate, radarstate, v_cruise, prev_accel_constraint=False):
     self.update_TF(carstate)
     self.set_weights()
@@ -354,8 +369,20 @@ class LongitudinalMpc:
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1], self.x_sol[:,1], self.desired_TF)
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1], self.x_sol[:,1], self.desired_TF)
+    lead_0_obstacle = (
+      lead_xv_0[:,0] +
+      get_stopped_equivalence_factor(
+        lead_xv_0[:,1], self.x_sol[:,1], self.desired_TF
+      ) +
+      self.stop_distance_adjustment
+    )
+    lead_1_obstacle = (
+      lead_xv_1[:,0] +
+      get_stopped_equivalence_factor(
+        lead_xv_1[:,1], self.x_sol[:,1], self.desired_TF
+      ) +
+      self.stop_distance_adjustment
+    )
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.

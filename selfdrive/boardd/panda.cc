@@ -156,11 +156,15 @@ finish:
 
 void Panda::handle_usb_issue(int err, const char func[]) {
   LOGE_100("usb error %d \"%s\" in %s", err, libusb_strerror((enum libusb_error)err), func);
-  if (err == LIBUSB_ERROR_NO_DEVICE) {
+  if (
+    err == LIBUSB_ERROR_NO_DEVICE ||
+    err == LIBUSB_ERROR_IO ||
+    err == LIBUSB_ERROR_PIPE
+  ) {
     LOGE("lost connection");
+    comms_healthy = false;
     connected = false;
   }
-  // TODO: check other errors, is simply retrying okay?
 }
 
 int Panda::usb_write(uint8_t bRequest, uint16_t wValue, uint16_t wIndex, unsigned int timeout) {
@@ -212,10 +216,23 @@ int Panda::usb_bulk_write(unsigned char endpoint, unsigned char* data, int lengt
     err = libusb_bulk_transfer(dev_handle, endpoint, data, length, &transferred, timeout);
 
     if (err == LIBUSB_ERROR_TIMEOUT) {
-      LOGW("Transmit buffer full");
+      consecutive_tx_timeouts++;
+      if (
+        consecutive_tx_timeouts == 1 ||
+        (consecutive_tx_timeouts % 5) == 0
+      ) {
+        LOGW("Transmit buffer full (%u consecutive)", consecutive_tx_timeouts);
+      }
+      if (consecutive_tx_timeouts >= 20) {
+        LOGE("persistent Panda TX timeout; forcing a clean boardd reconnect");
+        comms_healthy = false;
+        connected = false;
+      }
       break;
     } else if (err != 0 || length != transferred) {
       handle_usb_issue(err, __func__);
+    } else {
+      consecutive_tx_timeouts = 0;
     }
   } while(err != 0 && connected);
 

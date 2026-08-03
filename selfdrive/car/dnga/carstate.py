@@ -52,6 +52,9 @@ class CarState(CarStateBase):
     # Real accelerator pedal found on raw CAN: bus 1, addr 0x277, bytes 1-2 big endian
     self.gas_raw_277 = 0
 
+    # Scanner-validated engine RPM: bus 1, addr 0x037, bytes 3-4 big endian.
+    self.engine_rpm_raw_037 = 0
+
   def update(self, cp):
     ret = car.CarState.new_message()
 
@@ -81,6 +84,8 @@ class CarState(CarStateBase):
     # 0 = foot off, higher value = deeper pedal press.
     ret.gas = clip(self.gas_raw_277 / 30000.0, 0.0, 1.0)
     ret.gasPressed = self.gas_raw_277 > 100
+
+    ret.engineRPM = float(self.engine_rpm_raw_037)
 
     ret.brake = cp.vl["BRAKE"]['BRAKE_PRESSURE']
     ret.brakePressed = bool(cp.vl["BRAKE"]['BRAKE_ENGAGED'])

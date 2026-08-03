@@ -60,6 +60,11 @@ using namespace std::chrono_literals;
 std::atomic<bool> ignition(false);
 std::atomic<bool> pigeon_active(false);
 
+// Prevent startup/reconnect sendcan flooding until the final safety model for
+// this ignition session has been installed and allowed to settle.
+std::atomic<bool> safety_ready(false);
+std::atomic<uint64_t> safety_ready_since_ns(0);
+
 ExitHandler do_exit;
 
 static std::string get_time_str(const struct tm &time) {
@@ -109,6 +114,8 @@ void sync_time(Panda *panda, SyncTimeDir dir) {
 
 bool safety_setter_thread(std::vector<Panda *> pandas) {
   LOGD("Starting safety setter thread");
+  safety_ready = false;
+  safety_ready_since_ns = 0;
 
   // there should be at least one panda connected
   if (pandas.size() == 0) {
@@ -179,6 +186,10 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
     panda->set_safety_model(safety_model, safety_param);
   }
 
+  safety_ready_since_ns = nanos_since_boot();
+  safety_ready = true;
+  LOGW("panda safety ready; delaying CAN TX for 1000 ms");
+
   return true;
 }
 
@@ -226,8 +237,22 @@ void can_send_thread(std::vector<Panda *> pandas, bool fake_send) {
     capnp::FlatArrayMessageReader cmsg(aligned_buf.align(msg.get()));
     cereal::Event::Reader event = cmsg.getRoot<cereal::Event>();
 
-    //Dont send if older than 1 second
-    if ((nanos_since_boot() - event.getLogMonoTime() < 1e9) && !fake_send) {
+    const uint64_t now = nanos_since_boot();
+    const bool tx_settled = (
+      ignition &&
+      safety_ready &&
+      safety_ready_since_ns > 0 &&
+      (now - safety_ready_since_ns) >= 1000000000ULL
+    );
+
+    // Drain and discard startup/stale sendcan until the final safety model is
+    // active. This avoids filling the Panda USB TX queue during startup.
+    if (!tx_settled) {
+      continue;
+    }
+
+    // Don't send if older than 1 second.
+    if ((now - event.getLogMonoTime() < 1e9) && !fake_send) {
       for (const auto& panda : pandas) {
         panda->can_send(event.getSendcan());
       }
@@ -458,6 +483,8 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
 
     // clear ignition-based params and set new safety on car start
     if (ignition && !ignition_last) {
+      safety_ready = false;
+      safety_ready_since_ns = 0;
       params.clearAll(CLEAR_ON_IGNITION_ON);
       if (!safety_future.valid() || safety_future.wait_for(0ms) == std::future_status::ready) {
         safety_future = std::async(std::launch::async, safety_setter_thread, pandas);
@@ -465,6 +492,8 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
         LOGW("Safety setter thread already running");
       }
     } else if (!ignition && ignition_last) {
+      safety_ready = false;
+      safety_ready_since_ns = 0;
       params.clearAll(CLEAR_ON_IGNITION_OFF);
     }
 
