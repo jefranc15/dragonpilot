@@ -1,0 +1,570 @@
+// DNGA Yaris Cross HEV safety model for Dragonpilot 0.8.13.
+//
+// This replaces the previous controls_allowed=true bypass. The newly decoded
+// hybrid IDs are RX-only feedback; they are never added to the TX allowlist.
+
+const int DNGA_MAX_STEER = 255;
+const int DNGA_STEER_DELTA_UP = 22;
+const int DNGA_STEER_DELTA_DOWN = 35;
+const int DNGA_MAX_BRAKE_REQUEST = 87;       // (200 - magnitude byte), 0.87
+const int DNGA_MAX_BRAKE_STEP_UP = 6;        // 0.06 per 50 ms incl. rounding
+const int DNGA_INITIAL_BRAKE_MAX = 36;       // R3 stock-observed entry ceiling
+const int DNGA_TORQUE_POSITIVE_RAW = 80;
+const int DNGA_TORQUE_POSITIVE_11BIT = 5;
+const int DNGA_TORQUE_RELEASE_MIN_RAW = -100;
+const int DNGA_TORQUE_RELEASE_MIN_11BIT = -8;
+const int DNGA_BRAKE_REQUEST_CLEAR_MIN = -100;
+const int DNGA_ACTUAL_12A_MAX_ERROR = 400;  // async stock max 354.7 + margin
+const int DNGA_12A_125_MAX_ERROR = 100;     // stock max 92 + margin
+const int DNGA_NEUTRAL_SAMPLES = 5;
+const int DNGA_OVERLAP_FAULT_SAMPLES = 3;
+const int DNGA_ENTRY_TORQUE_RISE_RAW = 150;
+const int DNGA_ACC_ARM_SPEED_MARGIN = 150;     // 1.5 km/h KF/raw tolerance
+const int DNGA_ACC_ACTIVE_UP_MARGIN = 350;     // 2.0 km/h target + tolerance
+const int DNGA_ACC_ACTIVE_DOWN_MARGIN = 300;   // no hidden negative target
+const int DNGA_ACC_DECEL_SPEED_MARGIN = 300;   // decel mode stays current-speed
+const uint32_t DNGA_STEER_INCREASE_MIN_US = 15000U;
+const uint32_t DNGA_BRAKE_INCREASE_MIN_US = 40000U;
+const uint32_t DNGA_FEEDBACK_MAX_AGE_US = 250000U;
+const uint32_t DNGA_ENTRY_OVERLAP_US = 550000U;
+const int DNGA_WHEEL_MOVING_RAW = 6000;      // approximately 0.1 km/h
+
+const CanMsg DNGA_TX_MSGS[] = {
+  {0x1D0, 0, 8},  // STEERING_LKAS
+  {0x271, 0, 8},  // ACC_BRAKE
+  {0x273, 0, 8},  // ACC_CMD_HUD
+  {0x274, 0, 8},  // LKAS_HUD
+};
+
+AddrCheckStruct dnga_addr_checks[] = {
+  {.msg = {{0x0A1, 0, 8, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x1A0, 0, 8, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x208, 0, 6, .check_checksum = true, .max_counter = 15U, .expected_timestep = 33000U}, {0}, {0}}},
+  {.msg = {{0x08C, 1, 8, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x125, 1, 7, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x12A, 1, 7, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x275, 1, 8, .check_checksum = true, .expected_timestep = 50000U}, {0}, {0}}},
+  {.msg = {{0x277, 1, 8, .check_checksum = true, .expected_timestep = 20000U}, {0}, {0}}},
+  {.msg = {{0x2C9, 1, 8, .check_checksum = true, .expected_timestep = 33000U}, {0}, {0}}},
+};
+#define DNGA_ADDR_CHECKS_LEN (sizeof(dnga_addr_checks) / sizeof(dnga_addr_checks[0]))
+addr_checks dnga_rx_checks = {dnga_addr_checks, DNGA_ADDR_CHECKS_LEN};
+
+bool dnga_acc_main_latched = false;
+bool dnga_acc_main_prev = false;
+bool dnga_set_prev = false;
+bool dnga_resume_prev = false;
+bool dnga_feedback_fault_latched = false;
+bool dnga_decel_latched = false;
+bool dnga_decel_torque_cleared = false;
+bool dnga_accel_armed = false;
+int dnga_last_steer = 0;
+int dnga_last_brake_state = 0;
+int dnga_last_brake_request = 0;
+int dnga_brake_request_raw = 0;
+int dnga_torque_request_raw = 0;
+int dnga_torque_actual_raw = 0;
+int dnga_torque_12a_raw = 0;
+int dnga_torque_125_raw = 0;
+int dnga_friction_raw = 0;
+int dnga_vehicle_speed_cmd = 0;
+int dnga_neutral_samples = 0;
+int dnga_brake_clear_samples = 0;
+int dnga_overlap_fault_samples = 0;
+int dnga_entry_torque_raw = 0;
+uint32_t dnga_decel_entry_ts = 0U;
+uint32_t dnga_ts_275 = 0U;
+uint32_t dnga_ts_2c9 = 0U;
+uint32_t dnga_ts_12a = 0U;
+uint32_t dnga_ts_125 = 0U;
+uint32_t dnga_ts_08c = 0U;
+uint32_t dnga_last_steer_increase_ts = 0U;
+uint32_t dnga_last_brake_increase_ts = 0U;
+bool dnga_seen_275 = false;
+bool dnga_seen_2c9 = false;
+bool dnga_seen_12a = false;
+bool dnga_seen_125 = false;
+bool dnga_seen_08c = false;
+
+static uint8_t dnga_compute_checksum(CANPacket_t *to_push) {
+  int addr = GET_ADDR(to_push);
+  int len = GET_LEN(to_push);
+  uint8_t checksum = (uint8_t)addr + (uint8_t)((unsigned int)addr >> 8U) + (uint8_t)len;
+  for (int i = 0; i < (len - 1); i++) {
+    checksum += (uint8_t)GET_BYTE(to_push, i);
+  }
+  return checksum;
+}
+
+static uint8_t dnga_get_checksum(CANPacket_t *to_push) {
+  return (uint8_t)GET_BYTE(to_push, GET_LEN(to_push) - 1U);
+}
+
+static uint8_t dnga_get_counter(CANPacket_t *to_push) {
+  return (GET_ADDR(to_push) == 0x208) ?
+         ((uint8_t)GET_BYTE(to_push, 3) & 0x0FU) : 0U;
+}
+
+static bool dnga_feedback_fresh(void) {
+  uint32_t ts = microsecond_timer_get();
+  return dnga_seen_275 && dnga_seen_2c9 && dnga_seen_12a &&
+         dnga_seen_125 && dnga_seen_08c &&
+         (get_ts_elapsed(ts, dnga_ts_275) <= DNGA_FEEDBACK_MAX_AGE_US) &&
+         (get_ts_elapsed(ts, dnga_ts_2c9) <= DNGA_FEEDBACK_MAX_AGE_US) &&
+         (get_ts_elapsed(ts, dnga_ts_12a) <= DNGA_FEEDBACK_MAX_AGE_US) &&
+         (get_ts_elapsed(ts, dnga_ts_125) <= DNGA_FEEDBACK_MAX_AGE_US) &&
+         (get_ts_elapsed(ts, dnga_ts_08c) <= DNGA_FEEDBACK_MAX_AGE_US);
+}
+
+static bool dnga_feedback_consistent(void) {
+  // The stock-data fit is 73/6 (12.1667). Use integer arithmetic so this is
+  // exactly aligned with the Python observer without adding float safety code.
+  int actual_12a_error_x6 = ABS(
+    (dnga_torque_actual_raw * 6) - (dnga_torque_12a_raw * 73)
+  );
+  int duplicate_error = ABS(dnga_torque_12a_raw - dnga_torque_125_raw);
+  return (actual_12a_error_x6 <= (DNGA_ACTUAL_12A_MAX_ERROR * 6)) &&
+         (duplicate_error <= DNGA_12A_125_MAX_ERROR);
+}
+
+static bool dnga_positive_torque_vote(void) {
+  return (dnga_torque_request_raw > DNGA_TORQUE_POSITIVE_RAW) &&
+         (dnga_torque_actual_raw > DNGA_TORQUE_POSITIVE_RAW) &&
+         (dnga_torque_12a_raw > DNGA_TORQUE_POSITIVE_11BIT) &&
+         (dnga_torque_125_raw > DNGA_TORQUE_POSITIVE_11BIT);
+}
+
+static bool dnga_brakes_clear(void) {
+  return (dnga_brake_request_raw >= DNGA_BRAKE_REQUEST_CLEAR_MIN) &&
+         (dnga_friction_raw == 0);
+}
+
+static bool dnga_torque_ramp_ready(void) {
+  return (dnga_torque_request_raw >= DNGA_TORQUE_RELEASE_MIN_RAW) &&
+         (dnga_torque_actual_raw >= DNGA_TORQUE_RELEASE_MIN_RAW) &&
+         (dnga_torque_12a_raw >= DNGA_TORQUE_RELEASE_MIN_11BIT) &&
+         (dnga_torque_125_raw >= DNGA_TORQUE_RELEASE_MIN_11BIT);
+}
+
+static bool dnga_feedback_rearm_ready(void) {
+  return dnga_feedback_fresh() && dnga_feedback_consistent() &&
+         dnga_brakes_clear() && dnga_torque_ramp_ready() &&
+         !dnga_positive_torque_vote() &&
+         (dnga_neutral_samples >= DNGA_NEUTRAL_SAMPLES);
+}
+
+static void dnga_latch_feedback_fault(void) {
+  dnga_feedback_fault_latched = true;
+  controls_allowed = false;
+  dnga_accel_armed = false;
+  dnga_neutral_samples = 0;
+  dnga_brake_clear_samples = 0;
+}
+
+static void dnga_start_decel_latch(void) {
+  if (!dnga_decel_latched) {
+    dnga_decel_latched = true;
+    dnga_accel_armed = false;
+    dnga_decel_entry_ts = microsecond_timer_get();
+    dnga_entry_torque_raw = dnga_torque_actual_raw;
+    dnga_decel_torque_cleared = dnga_torque_actual_raw <= DNGA_TORQUE_POSITIVE_RAW;
+    dnga_overlap_fault_samples = 0;
+    dnga_brake_clear_samples = 0;
+  }
+}
+
+static int dnga_rx_hook(CANPacket_t *to_push) {
+  bool valid = addr_safety_check(to_push, &dnga_rx_checks,
+                                 dnga_get_checksum, dnga_compute_checksum,
+                                 dnga_get_counter);
+  if (!valid) {
+    controls_allowed = false;
+    return 0;
+  }
+
+  int addr = GET_ADDR(to_push);
+  int bus = GET_BUS(to_push);
+  uint32_t ts = microsecond_timer_get();
+
+  if ((bus == 0) && (addr == 0x1A0)) {
+    int speed_front = (GET_BYTE(to_push, 0) << 16) |
+                      (GET_BYTE(to_push, 1) << 8) |
+                       GET_BYTE(to_push, 2);
+    vehicle_moving = speed_front > DNGA_WHEEL_MOVING_RAW;
+    dnga_vehicle_speed_cmd = (int)(((uint64_t)speed_front * 1653U) / 1000000U);
+  }
+
+  if ((bus == 0) && (addr == 0x0A1)) {
+    brake_pressed = (GET_BYTE(to_push, 0) & 0x20U) != 0U;
+  }
+
+  if ((bus == 1) && (addr == 0x277)) {
+    int gas_raw = (GET_BYTE(to_push, 1) << 8) | GET_BYTE(to_push, 2);
+    gas_pressed = gas_raw > 100;
+  }
+
+  if ((bus == 0) && (addr == 0x208)) {
+    bool acc_main = (GET_BYTE(to_push, 0) & 0x80U) != 0U;
+    bool resume = (GET_BYTE(to_push, 0) & 0x40U) != 0U;
+    bool set = (GET_BYTE(to_push, 0) & 0x20U) != 0U;
+    bool cancel = (GET_BYTE(to_push, 0) & 0x10U) != 0U;
+
+    if (acc_main && !dnga_acc_main_prev) {
+      dnga_acc_main_latched = !dnga_acc_main_latched;
+      if (!dnga_acc_main_latched) {
+        controls_allowed = false;
+      }
+    }
+    if (cancel) {
+      controls_allowed = false;
+    }
+
+    bool set_release = dnga_set_prev && !set;
+    bool resume_release = dnga_resume_prev && !resume;
+    if (dnga_acc_main_latched && (set_release || resume_release)) {
+      if (dnga_feedback_rearm_ready() && !gas_pressed && !brake_pressed) {
+        dnga_feedback_fault_latched = false;
+        controls_allowed = true;
+      } else {
+        controls_allowed = false;
+      }
+    }
+    dnga_acc_main_prev = acc_main;
+    dnga_set_prev = set;
+    dnga_resume_prev = resume;
+  }
+
+  if ((bus == 1) && (addr == 0x275)) {
+    dnga_brake_request_raw = to_signed(
+      (GET_BYTE(to_push, 0) << 8) | GET_BYTE(to_push, 1), 16
+    );
+    dnga_torque_request_raw = to_signed(
+      (GET_BYTE(to_push, 2) << 8) | GET_BYTE(to_push, 3), 16
+    );
+    dnga_ts_275 = ts;
+    dnga_seen_275 = true;
+  }
+  if ((bus == 1) && (addr == 0x2C9)) {
+    dnga_torque_actual_raw = to_signed(
+      (GET_BYTE(to_push, 5) << 8) | GET_BYTE(to_push, 6), 16
+    );
+    dnga_ts_2c9 = ts;
+    dnga_seen_2c9 = true;
+  }
+  if ((bus == 1) && (addr == 0x12A)) {
+    int raw = ((GET_BYTE(to_push, 2) << 8) | GET_BYTE(to_push, 3)) & 0x7FF;
+    dnga_torque_12a_raw = to_signed(raw, 11);
+    dnga_ts_12a = ts;
+    dnga_seen_12a = true;
+  }
+  if ((bus == 1) && (addr == 0x125)) {
+    int raw = ((GET_BYTE(to_push, 3) << 8) | GET_BYTE(to_push, 4)) & 0x7FF;
+    dnga_torque_125_raw = to_signed(raw, 11);
+    dnga_ts_125 = ts;
+    dnga_seen_125 = true;
+  }
+  if ((bus == 1) && (addr == 0x08C)) {
+    dnga_friction_raw = GET_BYTE(to_push, 2);
+    dnga_ts_08c = ts;
+    dnga_seen_08c = true;
+  }
+
+  if ((bus == 1) && (addr == 0x275)) {
+    bool brake_clear = dnga_feedback_fresh() &&
+                       dnga_feedback_consistent() && dnga_brakes_clear();
+    if (brake_clear) {
+      dnga_brake_clear_samples = MIN(
+        dnga_brake_clear_samples + 1, DNGA_NEUTRAL_SAMPLES
+      );
+    } else {
+      dnga_brake_clear_samples = 0;
+    }
+    if (brake_clear && dnga_torque_ramp_ready() &&
+        !dnga_positive_torque_vote()) {
+      dnga_neutral_samples = MIN(dnga_neutral_samples + 1, DNGA_NEUTRAL_SAMPLES);
+    } else {
+      dnga_neutral_samples = 0;
+    }
+  }
+
+  if (dnga_decel_latched && (dnga_torque_actual_raw <= DNGA_TORQUE_POSITIVE_RAW)) {
+    dnga_decel_torque_cleared = true;
+  }
+  if ((bus == 1) && (addr == 0x2C9) && controls_allowed &&
+      (dnga_decel_latched || dnga_accel_armed) &&
+      (dnga_friction_raw > 0) && dnga_feedback_fresh() &&
+      dnga_feedback_consistent() && dnga_positive_torque_vote()) {
+    uint32_t entry_age = get_ts_elapsed(ts, dnga_decel_entry_ts);
+    bool rising = dnga_torque_actual_raw >
+                  MAX(DNGA_TORQUE_POSITIVE_RAW,
+                      dnga_entry_torque_raw + DNGA_ENTRY_TORQUE_RISE_RAW);
+    bool unsafe_overlap = dnga_accel_armed || dnga_decel_torque_cleared ||
+                          (entry_age > DNGA_ENTRY_OVERLAP_US) || rising;
+    if (unsafe_overlap) {
+      dnga_overlap_fault_samples = MIN(
+        dnga_overlap_fault_samples + 1, DNGA_OVERLAP_FAULT_SAMPLES
+      );
+    } else {
+      dnga_overlap_fault_samples = 0;
+    }
+    if (dnga_overlap_fault_samples >= DNGA_OVERLAP_FAULT_SAMPLES) {
+      dnga_latch_feedback_fault();
+    }
+  } else if ((bus == 1) && (addr == 0x2C9)) {
+    dnga_overlap_fault_samples = 0;
+  }
+
+  bool stock_ecu_detected = (bus == 0) &&
+    ((addr == 0x1D0) || (addr == 0x271) || (addr == 0x273));
+  generic_rx_checks(stock_ecu_detected);
+  return 1;
+}
+
+static int dnga_tx_hook(CANPacket_t *to_send) {
+  int addr = GET_ADDR(to_send);
+  int tx = msg_allowed(to_send, DNGA_TX_MSGS,
+                       sizeof(DNGA_TX_MSGS) / sizeof(DNGA_TX_MSGS[0]));
+  if (!tx || (dnga_get_checksum(to_send) != dnga_compute_checksum(to_send))) {
+    return 0;
+  }
+
+  // Once controls are live, loss or disagreement of any independent feedback
+  // channel is a latched fault. This is checked for every allowed TX address,
+  // so steering cannot continue after the longitudinal observer goes stale.
+  if (controls_allowed &&
+      (!dnga_feedback_fresh() || !dnga_feedback_consistent())) {
+    dnga_latch_feedback_fault();
+  }
+
+  if (addr == 0x1D0) {
+    uint32_t ts = microsecond_timer_get();
+    int desired_steer = to_signed(
+      (((GET_BYTE(to_send, 0) << 8) | GET_BYTE(to_send, 1)) >> 5) & 0x7FF, 11
+    );
+    bool steer_req = (GET_BYTE(to_send, 2) & 0x20U) != 0U;
+    bool constants_ok = ((GET_BYTE(to_send, 2) & 0x40U) != 0U) &&
+                        ((GET_BYTE(to_send, 3) & 0x40U) != 0U) &&
+                        (GET_BYTE(to_send, 4) == 0U) &&
+                        (GET_BYTE(to_send, 5) == 0U) &&
+                        (GET_BYTE(to_send, 6) == 0U);
+    bool violation = !constants_ok || (ABS(desired_steer) > DNGA_MAX_STEER);
+    if (!controls_allowed || dnga_feedback_fault_latched) {
+      violation |= steer_req || (desired_steer != 0);
+    } else if (!steer_req) {
+      violation |= desired_steer != 0;
+    } else {
+      int highest = dnga_last_steer +
+        ((dnga_last_steer >= 0) ? DNGA_STEER_DELTA_UP : DNGA_STEER_DELTA_DOWN);
+      int lowest = dnga_last_steer -
+        ((dnga_last_steer <= 0) ? DNGA_STEER_DELTA_UP : DNGA_STEER_DELTA_DOWN);
+      violation |= (desired_steer > highest) || (desired_steer < lowest);
+      if ((ABS(desired_steer) > ABS(dnga_last_steer)) &&
+          (dnga_last_steer_increase_ts != 0U)) {
+        violation |= get_ts_elapsed(ts, dnga_last_steer_increase_ts) <
+                     DNGA_STEER_INCREASE_MIN_US;
+      }
+    }
+    if (!violation && (ABS(desired_steer) > ABS(dnga_last_steer))) {
+      dnga_last_steer_increase_ts = ts;
+    }
+    dnga_last_steer = violation ? 0 : desired_steer;
+    if (violation) {
+      tx = 0;
+    }
+  }
+
+  if (addr == 0x271) {
+    uint32_t ts = microsecond_timer_get();
+    int state = GET_BYTE(to_send, 1);
+    int pump_inverse = GET_BYTE(to_send, 3);
+    int pump = GET_BYTE(to_send, 4);
+    int magnitude = GET_BYTE(to_send, 5);
+    int request = 200 - magnitude;
+    bool normal = (state == 0x01) && (pump_inverse == 0) &&
+                  (pump == 0) && (magnitude == 200);
+    bool staged = (state == 0x01) && (pump_inverse == 0xFC) &&
+                  (pump == 4) && (magnitude == 200);
+    bool disabled = (state == 0x00) && (pump_inverse == 0) &&
+                    (pump == 0) && (magnitude == 200);
+    bool active = (state == 0x21) || (state == 0x31) || (state == 0x30);
+    bool violation = GET_BYTE(to_send, 2) != 0U;
+
+    if (!controls_allowed || dnga_feedback_fault_latched) {
+      violation |= !disabled;
+    } else if (active) {
+      bool pump_ok = ((pump == 4) || (pump == 5)) &&
+                     (((pump_inverse + pump) & 0xFF) == 0);
+      bool envelope_ok = (request >= 5) && (request <= DNGA_MAX_BRAKE_REQUEST) &&
+                         ((pump == 5) == (request >= 75));
+      bool state_ok = (state != 0x30) || !vehicle_moving;
+      bool step_ok = true;
+      if ((dnga_last_brake_state != 0x21) &&
+          (dnga_last_brake_state != 0x31) &&
+          (dnga_last_brake_state != 0x30)) {
+        step_ok = request <= DNGA_INITIAL_BRAKE_MAX;
+      } else if (request > dnga_last_brake_request) {
+        step_ok = (request - dnga_last_brake_request) <= DNGA_MAX_BRAKE_STEP_UP;
+        if (dnga_last_brake_increase_ts != 0U) {
+          step_ok &= get_ts_elapsed(ts, dnga_last_brake_increase_ts) >=
+                     DNGA_BRAKE_INCREASE_MIN_US;
+        }
+      }
+      violation |= !pump_ok || !envelope_ok || !state_ok || !step_ok;
+      if (!violation) {
+        dnga_start_decel_latch();
+        if (request > dnga_last_brake_request) {
+          dnga_last_brake_increase_ts = ts;
+        }
+      }
+    } else {
+      violation |= !(normal || staged);
+      if ((dnga_last_brake_state == 0x21) ||
+          (dnga_last_brake_state == 0x31) ||
+          (dnga_last_brake_state == 0x30)) {
+        violation |= !staged;
+      }
+    }
+    if (!violation) {
+      dnga_last_brake_state = state;
+      dnga_last_brake_request = active ? request : 0;
+    } else {
+      tx = 0;
+    }
+  }
+
+  if (addr == 0x273) {
+    bool enabled = (GET_BYTE(to_send, 1) & 0x20U) != 0U;
+    bool is_accel = (GET_BYTE(to_send, 4) & 0x40U) != 0U;
+    bool is_decel = (GET_BYTE(to_send, 4) & 0x20U) != 0U;
+    int acc_cmd = (GET_BYTE(to_send, 2) << 8) | GET_BYTE(to_send, 3);
+    bool set_me_1 = (GET_BYTE(to_send, 6) & 0x40U) != 0U;
+    bool set_zero_when_engaged = (GET_BYTE(to_send, 5) & 0x01U) != 0U;
+    bool acc_ready = (GET_BYTE(to_send, 1) & 0x02U) != 0U;
+    bool violation = (acc_cmd > 12500) || !set_me_1 ||
+                     (set_zero_when_engaged == enabled);
+
+    if (!controls_allowed || dnga_feedback_fault_latched) {
+      violation |= enabled || is_accel || is_decel || (acc_cmd != 0);
+    } else {
+      violation |= !enabled || !acc_ready;
+      if (is_decel) {
+        dnga_start_decel_latch();
+        dnga_accel_armed = false;
+        // Standstill hold is the only valid simultaneous mode.
+        if (is_accel) {
+          violation |= vehicle_moving;
+        }
+        violation |= acc_cmd > (
+          dnga_vehicle_speed_cmd + DNGA_ACC_DECEL_SPEED_MARGIN
+        );
+        violation |= (acc_cmd + DNGA_ACC_DECEL_SPEED_MARGIN) <
+                     dnga_vehicle_speed_cmd;
+      } else if (is_accel) {
+        bool feedback_ok = dnga_feedback_fresh() &&
+                           dnga_feedback_consistent() && dnga_brakes_clear() &&
+                           (dnga_brake_clear_samples >= DNGA_NEUTRAL_SAMPLES);
+        violation |= !feedback_ok;
+        violation |= (dnga_last_brake_state == 0x21) ||
+                     (dnga_last_brake_state == 0x31) ||
+                     (dnga_last_brake_state == 0x30);
+        if (!dnga_accel_armed) {
+          violation |= acc_cmd > (
+            dnga_vehicle_speed_cmd + DNGA_ACC_ARM_SPEED_MARGIN
+          );
+          violation |= (acc_cmd + DNGA_ACC_ARM_SPEED_MARGIN) <
+                       dnga_vehicle_speed_cmd;
+        } else {
+          violation |= acc_cmd > (
+            dnga_vehicle_speed_cmd + DNGA_ACC_ACTIVE_UP_MARGIN
+          );
+          violation |= (acc_cmd + DNGA_ACC_ACTIVE_DOWN_MARGIN) <
+                       dnga_vehicle_speed_cmd;
+          if (acc_cmd > (
+              dnga_vehicle_speed_cmd + DNGA_ACC_ARM_SPEED_MARGIN
+          )) {
+            violation |= !dnga_torque_ramp_ready();
+          }
+        }
+        if (!violation) {
+          dnga_accel_armed = true;
+          dnga_decel_latched = false;
+          dnga_decel_entry_ts = 0U;
+          dnga_decel_torque_cleared = false;
+        }
+      } else {
+        violation = true;
+      }
+    }
+    if (violation) {
+      tx = 0;
+    }
+  }
+
+  return tx;
+}
+
+static int dnga_fwd_hook(int bus_num, CANPacket_t *to_fwd) {
+  int bus_fwd = -1;
+  int addr = GET_ADDR(to_fwd);
+  if (bus_num == 0) {
+    bus_fwd = 2;
+  }
+  if (bus_num == 2) {
+    bool block = (addr == 0x1D0) || (addr == 0x271) ||
+                 (addr == 0x273) || (addr == 0x274);
+    if (!block) {
+      bus_fwd = 0;
+    }
+  }
+  return bus_fwd;
+}
+
+static const addr_checks* dnga_init(int16_t param) {
+  UNUSED(param);
+  controls_allowed = false;
+  relay_malfunction_reset();
+  dnga_acc_main_latched = false;
+  dnga_acc_main_prev = false;
+  dnga_set_prev = false;
+  dnga_resume_prev = false;
+  dnga_feedback_fault_latched = false;
+  dnga_decel_latched = false;
+  dnga_decel_torque_cleared = false;
+  dnga_accel_armed = false;
+  dnga_last_steer = 0;
+  dnga_last_brake_state = 0;
+  dnga_last_brake_request = 0;
+  dnga_brake_request_raw = 0;
+  dnga_torque_request_raw = 0;
+  dnga_torque_actual_raw = 0;
+  dnga_torque_12a_raw = 0;
+  dnga_torque_125_raw = 0;
+  dnga_friction_raw = 0;
+  dnga_vehicle_speed_cmd = 0;
+  dnga_neutral_samples = 0;
+  dnga_brake_clear_samples = 0;
+  dnga_overlap_fault_samples = 0;
+  dnga_entry_torque_raw = 0;
+  dnga_decel_entry_ts = 0U;
+  dnga_ts_275 = 0U;
+  dnga_ts_2c9 = 0U;
+  dnga_ts_12a = 0U;
+  dnga_ts_125 = 0U;
+  dnga_ts_08c = 0U;
+  dnga_last_steer_increase_ts = 0U;
+  dnga_last_brake_increase_ts = 0U;
+  dnga_seen_275 = false;
+  dnga_seen_2c9 = false;
+  dnga_seen_12a = false;
+  dnga_seen_125 = false;
+  dnga_seen_08c = false;
+  return &dnga_rx_checks;
+}
+
+const safety_hooks dnga_hooks = {
+  .init = dnga_init,
+  .rx = dnga_rx_hook,
+  .tx = dnga_tx_hook,
+  .tx_lin = nooutput_tx_lin_hook,
+  .fwd = dnga_fwd_hook,
+};
