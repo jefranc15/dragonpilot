@@ -1,0 +1,38 @@
+name: Apply DNGA R4.1 stock release
+
+on:
+  push:
+    branches:
+      - nightly
+    paths:
+      - tools/dnga/apply_dnga_r4_1_stock_release.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply R4.1 stock-release patch
+        run: python tools/dnga/apply_dnga_r4_1_stock_release.py
+      - name: Validate and commit
+        shell: bash
+        run: |
+          git diff --check
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add selfdrive/car/dnga/carcontroller.py
+          if git diff --cached --quiet; then
+            echo "No controller changes to commit"
+            exit 0
+          fi
+          git commit -m "DNGA: align R4 handoff with stock 0x275 release"
+          git push origin HEAD:nightly
