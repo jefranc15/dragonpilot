@@ -1211,9 +1211,10 @@ class CarController():
       )
 
       def start_v33r_staged_release():
-        # Copy the stock-observed moving release sequence. Keep the pump
-        # reaction at FC/04/C8 and retain deceleration mode for the full
-        # observed 1.2-second pressure-release interval.
+        # Copy the stock-observed moving release sequence. Keep FC/04/C8 for
+        # the full observed 1.2-second protocol interval. R4.1 no longer treats
+        # that timer alone as physical braking: 0x273 may arm normal mode and,
+        # after verified neutral torque, ramp propulsion while FC/04/C8 remains.
         self.v33r2_decel_latched = True
         self.v33r2_decel_clear_counter = 0
         self.v33r2_release_pump_until_frame = max(
@@ -1978,12 +1979,15 @@ class CarController():
         distant_nonclosing_lead
       )
 
+      # R4.1: the stock 1.2 s FC/04/C8 stage is protocol framing, not proof
+      # that physical braking is still active. start_v33r_staged_release()
+      # already owns the persistent latch, so the timed release-pump stage must
+      # not continuously re-request/reset that latch.
       decel_latch_request = (
         control_allowed and
         (
           hydraulic_req or
           sng_release_active or
-          release_pump_active or
           (
             plan_fresh and
             planner_brake_request >= V33R2_DECEL_LATCH_BRAKE
@@ -2023,7 +2027,6 @@ class CarController():
           not self.v25o_stop_hold and
           not hydraulic_req and
           not sng_release_active and
-          not release_pump_active and
           r4_feedback_clean and
           r4_feedback["brakes_clear"] and
           (
@@ -2053,7 +2056,6 @@ class CarController():
 
       target_slope_lock = (
         hydraulic_req or
-        release_pump_active or
         self.v33r2_decel_latched or
         release_freeze_active or
         self.v25l_speed_offset < -V25V_REGEN_OFFSET_EPS
@@ -2077,7 +2079,6 @@ class CarController():
         r4_accel_arm_ready and
         r4_feedback["torque_ramp_ready"] and
         not hydraulic_req and
-        not release_pump_active and
         not self.v33r2_decel_latched and
         positive_agreement
       )
@@ -2092,9 +2093,11 @@ class CarController():
         self.v33r4_torque_ready_counter >= V33R4_TORQUE_READY_FRAMES
       )
 
+      # The 1.2 s FC/04/C8 release frame may coexist with positive hybrid
+      # torque in stock. Physical feedback/latch/torque readiness, not the
+      # protocol timer itself, decides whether propulsion may ramp.
       propulsion_blocked = (
         hydraulic_req or
-        release_pump_active or
         self.v33r2_decel_latched or
         not r4_propulsion_ramp_ready or
         not plan_fresh or
@@ -2131,13 +2134,12 @@ class CarController():
         # 0x273. Do not retain a negative target on an ordinary open road.
         self.v25l_speed_offset = 0.0
 
-      # Preserve the existing post-deceleration dwell, now driven by the
-      # persistent latch and verified pump-release stage instead of a negative
-      # 0x273 target. Low speed retains an additional neutral wake delay.
+      # R4.1: only physical/latched deceleration extends the neutral dwell.
+      # The stock 1.2 s FC/04/C8 protocol stage can continue after the hybrid
+      # system has already crossed through neutral into positive torque.
       regen_or_brake_active = (
         hydraulic_req or
         sng_release_active or
-        release_pump_active or
         self.v33r2_decel_latched
       )
       if regen_or_brake_active:
@@ -2178,7 +2180,6 @@ class CarController():
         control_allowed and
         not hydraulic_req and
         not sng_release_active and
-        not release_pump_active and
         not self.v33r2_decel_latched and
         not self.v25o_stop_hold and
         CS.out.vEgo < V32R_LOW_SPEED_MAX and
@@ -2292,7 +2293,6 @@ class CarController():
       elif (
         hydraulic_req or
         sng_release_active or
-        release_pump_active or
         self.v33r2_decel_latched
       ):
         self.v25l_speed_offset = 0.0
@@ -2433,10 +2433,10 @@ class CarController():
         des_speed = 0.0
       elif (
         hydraulic_req or
-        release_pump_active or
         self.v33r2_decel_latched
       ):
-        # Never combine braking intent with a lowered or positive 0x273 target.
+        # Never combine physical/latched braking intent with a positive target.
+        # A timed FC/04/C8 release frame alone is not physical braking.
         des_speed = CS.out.vEgo
       else:
         des_speed = max(0.0, CS.out.vEgo + self.v25l_speed_offset)
@@ -2461,9 +2461,20 @@ class CarController():
         acc_cmd_is_accel = True
         acc_cmd_is_decel = True
       elif (
+        release_pump_active and
+        not self.v33r2_decel_latched and
+        r4_accel_arm_ready and
+        plan_fresh
+      ):
+        # Stock 2026-08-26 capture: 0x271 stayed 0x01 + FC/04/C8 for 1.20 s,
+        # while 0x273 changed 0x20 -> 0x40 and hybrid torque crossed positive.
+        # Arm normal/ACCEL mode here, but target buildup remains independently
+        # blocked by torque-ready feedback and the retained dwell/ramp gates.
+        acc_cmd_is_accel = True
+        acc_cmd_is_decel = False
+      elif (
         brake_state in (0x21, 0x31) or
         sng_release_active or
-        release_pump_active or
         self.v33r2_decel_latched or
         low_speed_handoff_blocked or
         not r4_accel_arm_ready or
@@ -2482,7 +2493,6 @@ class CarController():
         low_speed_propulsion_request and
         not hydraulic_req and
         not sng_release_active and
-        not release_pump_active and
         not self.v33r2_decel_latched and
         r4_propulsion_ramp_ready and
         not self.v25o_stop_hold and
