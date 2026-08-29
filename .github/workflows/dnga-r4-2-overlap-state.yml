@@ -1,0 +1,41 @@
+name: Apply DNGA R4.2 overlap state separation
+
+on:
+  push:
+    branches:
+      - nightly
+    paths:
+      - tools/dnga/apply_dnga_r4_2_overlap_state_fix.py
+      - .github/workflows/dnga-r4-2-overlap-state.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Separate overlap timing state
+        run: python tools/dnga/apply_dnga_r4_2_overlap_state_fix.py
+      - name: Validate and commit
+        shell: bash
+        run: |
+          git diff --check
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          grep -q 'v33r4_overlap_entry_frame' selfdrive/car/dnga/carcontroller.py
+          grep -q 'frame - self.v33r4_overlap_entry_frame' selfdrive/car/dnga/carcontroller.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add selfdrive/car/dnga/carcontroller.py
+          if git diff --cached --quiet; then
+            echo "No controller changes to commit"
+            exit 0
+          fi
+          git commit -m "DNGA: separate R4.2 physical overlap timing state"
+          git push origin HEAD:nightly
