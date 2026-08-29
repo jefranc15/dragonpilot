@@ -21,6 +21,9 @@ class CarState(CarStateBase):
     
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
+    # V4.0 one-cycle SET/RES release edge consumed by CarController when a
+    # longitudinal-only hybrid feedback fault needs explicit driver rearm.
+    self.v40_acc_rearm_edge = False
     self.prev_distance_btn = False
     # Local enum used by dngacan/carcontroller:
     #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
@@ -149,6 +152,13 @@ class CarState(CarStateBase):
 
     minus_button = bool(cp.vl["PCM_BUTTONS"]["SET_MINUS"])
     plus_button = bool(cp.vl["PCM_BUTTONS"]["RES_PLUS"])
+
+    # V4.0: previous latch values are updated later in this block, so this is
+    # true for exactly one CarState cycle on the physical SET or RES release.
+    self.v40_acc_rearm_edge = bool(
+      (self.is_plus_btn_latch and not plus_button) or
+      (self.is_minus_btn_latch and not minus_button)
+    )
 
     if self.is_cruise_latch:
       cur_time = time()

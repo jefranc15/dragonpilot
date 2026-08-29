@@ -21,7 +21,15 @@ except ImportError:
       return False
 
 
-# V3.3R4 hybrid-feedback-supervisor build: offline/replay/bench validation.
+# V4.0 DNGA engagement and hybrid-feedback build.
+#
+# V4.0 combines the R4.1 stock-derived handoff with the 2026-08-29 road-log
+# fixes: SET/RES remains an enabled ACC session during driver gas override,
+# longitudinal fault rearm requires fresh/consistent brake-clear feedback but
+# leaves torque neutrality to the independent propulsion gate, the 0.55-second
+# positive-torque/friction allowance starts at actual physical overlap rather
+# than planner decel intent, and a longitudinal-only hybrid fault no longer
+# tears down otherwise healthy lateral steering.
 #
 # R4 retains every R3 stopping and R2 handoff safeguard, but changes the final
 # brake-to-propulsion handoff from timer/aEgo inference to read-only bus-1
@@ -619,7 +627,7 @@ class CarController():
     self.v33r4_decel_entry_frame = -1000000
     self.v33r4_decel_entry_torque = 0
     self.v33r4_decel_torque_cleared = False
-    # R4.2 keeps physical friction/positive-torque overlap timing independent
+    # V4.0 keeps physical friction/positive-torque overlap timing independent
     # from the decel-latch entry timestamp. Sharing these states caused the
     # pre-friction planner interval to leak back into the overlap age.
     self.v33r4_overlap_entry_frame = -1000000
@@ -662,8 +670,10 @@ class CarController():
     self.v33r4_overlap_torque_cleared = False
     self.v33r4_positive_overlap_counter = 0
     self.v25l_speed_offset = 0.0
-    if hasattr(CS, "is_cruise_latch"):
-      CS.is_cruise_latch = False
+    # V4.0: hybrid feedback supervises longitudinal actuation only. Keep the
+    # cruise latch and lateral session alive; longitudinal_session_allowed
+    # below still goes false while this fault is latched, so 0x271/0x273 fail
+    # non-propulsive without dropping a healthy 0x1D0 STEER_REQ.
     CS.hybrid_feedback_fault = True
     CS.hybrid_feedback_fault_reason = self.v33r4_fault_reason
 
@@ -1053,7 +1063,7 @@ class CarController():
       # -----------------------------
       brake_request = apply_brake
 
-      # R4.2 separates the ACC session from actuator authority. Stock accepts
+      # V4.0 separates the ACC session from actuator authority. Stock accepts
       # SET/RES and shows the set speed while the driver is overriding with the
       # accelerator; only brake/CANCEL/session loss disable the 0x271/0x273
       # session. Gas still blocks every OP brake/propulsion actuator below.
@@ -1080,10 +1090,15 @@ class CarController():
         r4_feedback["brakes_clear"]
       )
 
-      # A fault is not cleared by timers or by the stale outer enabled flag.
-      # A new SET/RES engagement edge may clear it only while all observed
-      # feedback is fresh, mutually consistent, brake-clear, and non-positive.
-      if engagement_edge and self.v33r4_fault_latched:
+      # V4.0: because a longitudinal fault no longer destroys the cruise
+      # latch/lateral session, outer `enabled` may stay true. Accept either the
+      # normal outer engagement edge or a real physical SET/RES release edge
+      # from CarState as the explicit driver request to rearm longitudinal.
+      v40_rearm_edge = (
+        engagement_edge or
+        bool(getattr(CS, "v40_acc_rearm_edge", False))
+      )
+      if v40_rearm_edge and self.v33r4_fault_latched:
         if r4_rearm_ok:
           self.v33r4_fault_latched = False
           self.v33r4_fault_reason = ""
@@ -1867,7 +1882,7 @@ class CarController():
       # brake entry. The 2026-08-29 R4.1 logs showed the old timer started
       # 0.5-0.7 s too early from planner/DECEL intent, exhausting the entire
       # allowance before friction even appeared and falsely dropping control.
-      # R4.2 starts the 0.55 s envelope only when the actual measured overlap
+      # V4.0 starts the 0.55 s envelope only when the actual measured overlap
       # (friction > 0 + positive torque vote) begins. Rising torque, persistence
       # past the envelope, or positive torque returning after neutral remains a
       # fault.
