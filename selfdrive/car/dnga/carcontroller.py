@@ -619,6 +619,12 @@ class CarController():
     self.v33r4_decel_entry_frame = -1000000
     self.v33r4_decel_entry_torque = 0
     self.v33r4_decel_torque_cleared = False
+    # R4.2 keeps physical friction/positive-torque overlap timing independent
+    # from the decel-latch entry timestamp. Sharing these states caused the
+    # pre-friction planner interval to leak back into the overlap age.
+    self.v33r4_overlap_entry_frame = -1000000
+    self.v33r4_overlap_entry_torque = 0
+    self.v33r4_overlap_torque_cleared = False
     self.v33r4_positive_overlap_counter = 0
 
     self.v25r_plan_source = ""
@@ -651,6 +657,9 @@ class CarController():
     self.v33r4_fault_reason = str(reason)
     self.v33r4_brake_clear_counter = 0
     self.v33r4_torque_ready_counter = 0
+    self.v33r4_overlap_entry_frame = -1000000
+    self.v33r4_overlap_entry_torque = 0
+    self.v33r4_overlap_torque_cleared = False
     self.v33r4_positive_overlap_counter = 0
     self.v25l_speed_offset = 0.0
     if hasattr(CS, "is_cruise_latch"):
@@ -740,6 +749,9 @@ class CarController():
       self.v33r4_decel_entry_frame = -1000000
       self.v33r4_decel_entry_torque = 0
       self.v33r4_decel_torque_cleared = False
+      self.v33r4_overlap_entry_frame = -1000000
+      self.v33r4_overlap_entry_torque = 0
+      self.v33r4_overlap_torque_cleared = False
       self.v33r4_positive_overlap_counter = 0
 
     self.prev_enabled = enabled  # Save enabled state for the next control cycle
@@ -1876,38 +1888,39 @@ class CarController():
       )
 
       if not r4_negative_intent:
-        self.v33r4_decel_entry_frame = -1000000
-        self.v33r4_decel_entry_torque = 0
-        self.v33r4_decel_torque_cleared = False
+        self.v33r4_overlap_entry_frame = -1000000
+        self.v33r4_overlap_entry_torque = 0
+        self.v33r4_overlap_torque_cleared = False
       elif r4_feedback_clean and r4_feedback["torque_actual"] <= 80:
         # Once the powertrain has crossed through the positive-torque region,
         # any later return to voted propulsion under friction is not an entry
-        # transient and should fault immediately.
-        self.v33r4_decel_torque_cleared = True
+        # transient and should fault immediately. Keep this independent from
+        # decel-latch clearing so a release-stage transition cannot reset it.
+        self.v33r4_overlap_torque_cleared = True
 
       if (
         r4_positive_under_friction and
-        self.v33r4_decel_entry_frame < 0
+        self.v33r4_overlap_entry_frame < 0
       ):
-        self.v33r4_decel_entry_frame = frame
-        self.v33r4_decel_entry_torque = r4_feedback["torque_actual"]
+        self.v33r4_overlap_entry_frame = frame
+        self.v33r4_overlap_entry_torque = r4_feedback["torque_actual"]
 
-      r4_overlap_started = self.v33r4_decel_entry_frame >= 0
+      r4_overlap_started = self.v33r4_overlap_entry_frame >= 0
       r4_overlap_age = (
-        frame - self.v33r4_decel_entry_frame
+        frame - self.v33r4_overlap_entry_frame
         if r4_overlap_started else 0
       )
       r4_overlap_rising = (
         r4_positive_under_friction and
         r4_overlap_started and
         r4_feedback["torque_actual"] >
-        max(80, self.v33r4_decel_entry_torque + V33R4_ENTRY_TORQUE_RISE_RAW)
+        max(80, self.v33r4_overlap_entry_torque + V33R4_ENTRY_TORQUE_RISE_RAW)
       )
       r4_overlap_unsafe = (
         r4_positive_under_friction and
         (
           not r4_negative_intent or
-          self.v33r4_decel_torque_cleared or
+          self.v33r4_overlap_torque_cleared or
           (
             r4_overlap_started and
             r4_overlap_age > V33R4_ENTRY_OVERLAP_FRAMES
@@ -2038,6 +2051,9 @@ class CarController():
         self.v33r4_torque_ready_counter = 0
         self.v33r4_decel_entry_frame = -1000000
         self.v33r4_decel_torque_cleared = False
+        self.v33r4_overlap_entry_frame = -1000000
+        self.v33r4_overlap_entry_torque = 0
+        self.v33r4_overlap_torque_cleared = False
         self.v33r4_positive_overlap_counter = 0
         self.v33r2_release_pump_until_frame = frame
         self.v33r3_predictive_entry_counter = 0
