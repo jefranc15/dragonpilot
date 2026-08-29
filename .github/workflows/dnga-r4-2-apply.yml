@@ -6,6 +6,7 @@ on:
       - nightly
     paths:
       - tools/dnga/apply_dnga_r4_2_engagement_fix.py
+      - .github/workflows/dnga-r4-2-apply.yml
 
 permissions:
   contents: write
