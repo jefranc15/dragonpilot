@@ -1,0 +1,40 @@
+name: Apply DNGA R4.2 engagement fixes
+
+on:
+  push:
+    branches:
+      - nightly
+    paths:
+      - tools/dnga/apply_dnga_r4_2_engagement_fix.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply R4.2 engagement/fault patch
+        run: python tools/dnga/apply_dnga_r4_2_engagement_fix.py
+      - name: Validate and commit
+        shell: bash
+        run: |
+          git diff --check
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          grep -q 'longitudinal_enabled = longitudinal_session_allowed' selfdrive/car/dnga/carcontroller.py
+          grep -q 'gas_override_active' selfdrive/car/dnga/carcontroller.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add selfdrive/car/dnga/carcontroller.py
+          if git diff --cached --quiet; then
+            echo "No controller changes to commit"
+            exit 0
+          fi
+          git commit -m "DNGA: fix R4.2 engagement and overlap faults"
+          git push origin HEAD:nightly
