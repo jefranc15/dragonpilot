@@ -1041,22 +1041,31 @@ class CarController():
       # -----------------------------
       brake_request = apply_brake
 
-      base_control_allowed = (
+      # R4.2 separates the ACC session from actuator authority. Stock accepts
+      # SET/RES and shows the set speed while the driver is overriding with the
+      # accelerator; only brake/CANCEL/session loss disable the 0x271/0x273
+      # session. Gas still blocks every OP brake/propulsion actuator below.
+      base_session_allowed = (
         enabled and
         CS.out.cruiseState.enabled and
         not pcm_cancel_cmd and
-        not CS.out.gasPressed and
         not CS.out.brakePressed
+      )
+      base_control_allowed = (
+        base_session_allowed and
+        not CS.out.gasPressed
       )
       r4_feedback = hybrid_feedback_snapshot(CS, frame)
       r4_feedback_clean = (
         r4_feedback["fresh"] and r4_feedback["consistent"]
       )
+      # Rearm is a session-level decision, not permission for propulsion. A
+      # clean, brake-clear hybrid state may rearm even while torque is not yet
+      # neutral; r4_torque_ready_candidate remains the independent propulsion
+      # gate after the accelerator is released.
       r4_rearm_ok = (
         r4_feedback_clean and
-        r4_feedback["brakes_clear"] and
-        r4_feedback["torque_ramp_ready"] and
-        not r4_feedback["positive_vote"]
+        r4_feedback["brakes_clear"]
       )
 
       # A fault is not cleared by timers or by the stale outer enabled flag.
@@ -1086,6 +1095,12 @@ class CarController():
 
       control_allowed = (
         base_control_allowed and not self.v33r4_fault_latched
+      )
+      longitudinal_session_allowed = (
+        base_session_allowed and not self.v33r4_fault_latched
+      )
+      gas_override_active = (
+        longitudinal_session_allowed and CS.out.gasPressed
       )
       CS.hybrid_feedback_fault = self.v33r4_fault_latched
       CS.hybrid_feedback_fault_reason = self.v33r4_fault_reason
@@ -1836,11 +1851,14 @@ class CarController():
         )
       )
 
-      # Toyota briefly overlaps positive hybrid torque with brake entry. In
-      # the passive stock capture the longest voted positive-torque + friction
-      # overlap was 0.20 s. Permit a wider 0.55 s entry envelope only while
-      # torque does not rise materially; once torque has cleared, any return of
-      # voted propulsion under friction is a fault.
+      # Toyota briefly overlaps positive hybrid torque with physical friction
+      # brake entry. The 2026-08-29 R4.1 logs showed the old timer started
+      # 0.5-0.7 s too early from planner/DECEL intent, exhausting the entire
+      # allowance before friction even appeared and falsely dropping control.
+      # R4.2 starts the 0.55 s envelope only when the actual measured overlap
+      # (friction > 0 + positive torque vote) begins. Rising torque, persistence
+      # past the envelope, or positive torque returning after neutral remains a
+      # fault.
       r4_negative_intent = (
         control_allowed and
         (
@@ -1850,23 +1868,38 @@ class CarController():
           (plan_fresh and planner_brake_request >= V33R2_DECEL_LATCH_BRAKE)
         )
       )
-      if r4_negative_intent and self.v33r4_decel_entry_frame < 0:
-        self.v33r4_decel_entry_frame = frame
-        self.v33r4_decel_entry_torque = r4_feedback["torque_actual"]
-        self.v33r4_decel_torque_cleared = (
-          r4_feedback["torque_actual"] <= 80
-        )
-      if r4_negative_intent and r4_feedback["torque_actual"] <= 80:
-        self.v33r4_decel_torque_cleared = True
-
       r4_positive_under_friction = (
         control_allowed and
         r4_feedback_clean and
         r4_feedback["friction"] > 0 and
         r4_feedback["positive_vote"]
       )
-      r4_overlap_age = frame - self.v33r4_decel_entry_frame
+
+      if not r4_negative_intent:
+        self.v33r4_decel_entry_frame = -1000000
+        self.v33r4_decel_entry_torque = 0
+        self.v33r4_decel_torque_cleared = False
+      elif r4_feedback_clean and r4_feedback["torque_actual"] <= 80:
+        # Once the powertrain has crossed through the positive-torque region,
+        # any later return to voted propulsion under friction is not an entry
+        # transient and should fault immediately.
+        self.v33r4_decel_torque_cleared = True
+
+      if (
+        r4_positive_under_friction and
+        self.v33r4_decel_entry_frame < 0
+      ):
+        self.v33r4_decel_entry_frame = frame
+        self.v33r4_decel_entry_torque = r4_feedback["torque_actual"]
+
+      r4_overlap_started = self.v33r4_decel_entry_frame >= 0
+      r4_overlap_age = (
+        frame - self.v33r4_decel_entry_frame
+        if r4_overlap_started else 0
+      )
       r4_overlap_rising = (
+        r4_positive_under_friction and
+        r4_overlap_started and
         r4_feedback["torque_actual"] >
         max(80, self.v33r4_decel_entry_torque + V33R4_ENTRY_TORQUE_RISE_RAW)
       )
@@ -1875,7 +1908,10 @@ class CarController():
         (
           not r4_negative_intent or
           self.v33r4_decel_torque_cleared or
-          r4_overlap_age > V33R4_ENTRY_OVERLAP_FRAMES or
+          (
+            r4_overlap_started and
+            r4_overlap_age > V33R4_ENTRY_OVERLAP_FRAMES
+          ) or
           r4_overlap_rising
         )
       )
@@ -2419,15 +2455,22 @@ class CarController():
         # ECU wake stage: lead bit only, no positive desired-speed target.
         self.v25l_speed_offset = 0.0
 
-      # Longitudinal engagement follows independent physical/cruise override
-      # state, not the stale outer `enabled` bit. This makes gas, brake,
-      # CANCEL, and cruise-latch loss encode an exact disabled command.
-      longitudinal_enabled = control_allowed
+      # Keep the SET/RES ACC session visible through a driver accelerator
+      # override, matching the stock camera. Actuator authority remains
+      # `control_allowed`, so gas cannot produce OP braking or propulsion.
+      longitudinal_enabled = longitudinal_session_allowed
       if not longitudinal_enabled:
         brake_state = 0x00
         pump_reaction = 0.0
         brake_mag = 200
         des_speed = 0.0
+      elif gas_override_active:
+        # Stock-like neutral override framing: preserve enabled 0x01/0x273 and
+        # the cluster set speed, but request no OP acceleration/deceleration.
+        brake_state = 0x01
+        pump_reaction = 0.0
+        brake_mag = 200
+        des_speed = CS.out.vEgo
       elif self.v25o_stop_hold or sng_release_active:
         # Stock standstill and standstill-release logs keep ACC_CMD at zero.
         des_speed = 0.0
@@ -2456,6 +2499,13 @@ class CarController():
       )
       if not longitudinal_enabled:
         acc_cmd_is_accel = False
+        acc_cmd_is_decel = False
+      elif gas_override_active:
+        # Stock accepts SET while the driver holds the accelerator. Keep the
+        # normal/ACCEL mode bit armed with an exact current-speed target; OP
+        # positive-target authority remains blocked until gas is released and
+        # the R4 torque-ready gate passes.
+        acc_cmd_is_accel = True
         acc_cmd_is_decel = False
       elif brake_state == 0x30:
         acc_cmd_is_accel = True
@@ -2520,7 +2570,7 @@ class CarController():
           self.packer,  # CAN packer
           CS.cruise_speed,  # OP cruise set speed
           CS.out.cruiseState.available,  # ACC ready/available bit
-          longitudinal_enabled,  # Independently override-gated longitudinal state
+          longitudinal_enabled,  # SET/RES session state; gas override stays enabled
           lead_for_acc_cmd,  # Real lead or isolated low-speed ECU wake
           des_speed,  # Desired speed command
           acc_cmd_is_accel,  # Explicit stock IS_ACCEL mode bit
