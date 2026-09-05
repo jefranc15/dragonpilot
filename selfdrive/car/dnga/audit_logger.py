@@ -14,6 +14,7 @@ import sys
 import time
 
 import cereal.messaging as messaging
+from common.realtime import sec_since_boot
 
 
 HYBRID_IDS = (0x08C, 0x125, 0x12A, 0x275, 0x2C9)
@@ -198,7 +199,7 @@ def hybrid(raw, now_ns):
 
 
 def row_from(sm, raw, index, rx_count, tx_count):
-  now_ns = time.monotonic_ns()
+  now_ns = int(sec_since_boot() * 1e9)
   cs, cc = sm["carState"], sm["carControl"]
   controls, plan, radar = sm["controlsState"], sm["longitudinalPlan"], sm["radarState"]
   cruise = get(cs, "cruiseState", None)
