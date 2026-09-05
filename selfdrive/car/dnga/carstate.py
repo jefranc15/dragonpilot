@@ -1,29 +1,29 @@
 from cereal import car
 from opendbc.can.parser import CANParser
 from opendbc.can.can_define import CANDefine
-from common.numpy_fast import mean, interp, clip
+from common.numpy_fast import mean, clip
 from selfdrive.config import Conversions as CV
 from selfdrive.car.interfaces import CarStateBase
-from selfdrive.car.dnga.values import DBC, CAR, ACC_CAR, HUD_MULTIPLIER
+from selfdrive.car.dnga.values import DBC, ACC_CAR, HUD_MULTIPLIER
 from time import time
 
 SEC_HOLD_TO_STEP_SPEED = 0.6
 
+
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
-    can_define = CANDefine(DBC[CP.carFingerprint]['pt'])
-    self.shifter_values = can_define.dv["TRANSMISSION"]['GEAR']
+    can_define = CANDefine(DBC[CP.carFingerprint]["pt"])
+    self.shifter_values = can_define.dv["TRANSMISSION"]["GEAR"]
     if CP.carFingerprint in ACC_CAR:
-      self.set_distance_values = can_define.dv['ACC_CMD_HUD']['FOLLOW_DISTANCE']
+      self.set_distance_values = can_define.dv["ACC_CMD_HUD"]["FOLLOW_DISTANCE"]
     self.is_cruise_latch = False
     self.cruise_speed = 30 * CV.KPH_TO_MS
-    
+
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
-    # V4.0 one-cycle SET/RES release edge consumed by CarController when a
-    # longitudinal-only hybrid feedback fault needs explicit driver rearm.
-    self.v40_acc_rearm_edge = False
+    # SET/RES release provides the explicit longitudinal fault rearm edge.
+    self.acc_rearm_edge = False
     self.prev_distance_btn = False
     # Local enum used by dngacan/carcontroller:
     #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
@@ -31,7 +31,7 @@ class CarState(CarStateBase):
     self.op_distance_val = 1
 
     self.rising_edge_since = 0
-    self.last_frame = time() 
+    self.last_frame = time()
     self.dt = 0
 
     self.stock_lkc_off = True
@@ -62,26 +62,31 @@ class CarState(CarStateBase):
     ret = car.CarState.new_message()
 
     ret.wheelSpeeds = self.get_wheel_speeds(
-      cp.vl["WHEEL_SPEED"]['WHEELSPEED_F'],
-      cp.vl["WHEEL_SPEED"]['WHEELSPEED_F'],
-      cp.vl["WHEEL_SPEED"]['WHEELSPEED_F'],
-      cp.vl["WHEEL_SPEED"]['WHEELSPEED_F'],
+      cp.vl["WHEEL_SPEED"]["WHEELSPEED_F"],
+      cp.vl["WHEEL_SPEED"]["WHEELSPEED_F"],
+      cp.vl["WHEEL_SPEED"]["WHEELSPEED_F"],
+      cp.vl["WHEEL_SPEED"]["WHEELSPEED_F"],
     )
     ret.vEgoRaw = mean([ret.wheelSpeeds.rr, ret.wheelSpeeds.rl, ret.wheelSpeeds.fr, ret.wheelSpeeds.fl])
     ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
     ret.standstill = ret.vEgoRaw < 0.01
 
-    can_gear = int(cp.vl["TRANSMISSION"]['GEAR'])
-    ret.doorOpen = any([cp.vl["METER_CLUSTER"]['MAIN_DOOR'],
-                     cp.vl["METER_CLUSTER"]['LEFT_FRONT_DOOR'],
-                     cp.vl["METER_CLUSTER"]['RIGHT_BACK_DOOR'],
-                     cp.vl["METER_CLUSTER"]['LEFT_BACK_DOOR']])
+    can_gear = int(cp.vl["TRANSMISSION"]["GEAR"])
+    ret.doorOpen = any(
+      [
+        cp.vl["METER_CLUSTER"]["MAIN_DOOR"],
+        cp.vl["METER_CLUSTER"]["LEFT_FRONT_DOOR"],
+        cp.vl["METER_CLUSTER"]["RIGHT_BACK_DOOR"],
+        cp.vl["METER_CLUSTER"]["LEFT_BACK_DOOR"],
+      ]
+    )
 
-    ret.seatbeltUnlatched = cp.vl["METER_CLUSTER"]['SEAT_BELT_WARNING'] == 1
-    ret.seatbeltUnlatched |= cp.vl["METER_CLUSTER"]['SEAT_BELT_WARNING2'] == 1
+    ret.seatbeltUnlatched = cp.vl["METER_CLUSTER"]["SEAT_BELT_WARNING"] == 1
+    ret.seatbeltUnlatched |= cp.vl["METER_CLUSTER"]["SEAT_BELT_WARNING2"] == 1
     ret.gearShifter = self.parse_gear_shifter(self.shifter_values.get(can_gear, None))
 
-    self.is_cruise_latch = False if (ret.doorOpen or ret.seatbeltUnlatched) else self.is_cruise_latch
+    if ret.doorOpen or ret.seatbeltUnlatched:
+      self.is_cruise_latch = False
 
     # Real accelerator pedal is raw CAN bus 1 addr 0x277, bytes 1-2 big endian.
     # 0 = foot off, higher value = deeper pedal press.
@@ -90,30 +95,46 @@ class CarState(CarStateBase):
 
     ret.engineRPM = float(self.engine_rpm_raw_037)
 
-    ret.brake = cp.vl["BRAKE"]['BRAKE_PRESSURE']
-    ret.brakePressed = bool(cp.vl["BRAKE"]['BRAKE_ENGAGED'])
+    ret.brake = cp.vl["BRAKE"]["BRAKE_PRESSURE"]
+    ret.brakePressed = bool(cp.vl["BRAKE"]["BRAKE_ENGAGED"])
 
-    ret.steeringAngleDeg = cp.vl["STEERING_MODULE"]['STEER_ANGLE']
-    ret.steeringTorque = cp.vl["STEERING_MODULE"]['MAIN_TORQUE']
-    ret.steeringTorqueEps = cp.vl["EPS_SHAFT_TORQUE"]['STEERING_TORQUE']
+    ret.steeringAngleDeg = cp.vl["STEERING_MODULE"]["STEER_ANGLE"]
+    ret.steeringTorque = cp.vl["STEERING_MODULE"]["MAIN_TORQUE"]
+    ret.steeringTorqueEps = cp.vl["EPS_SHAFT_TORQUE"]["STEERING_TORQUE"]
     ret.steeringPressed = bool(abs(ret.steeringTorque) > 20)
     ret.steerWarning = False
     ret.steerError = False
 
     v_ego_cluster = cp.vl["BUTTONS"]["UI_SPEED"] * CV.KPH_TO_MS * HUD_MULTIPLIER
     self.stock_adas_frontDepartureHUD = bool(cp.vl["LKAS_HUD"]["FRONT_DEPART"])
-    #self.stock_adas_aebV = cp.vl ["ACC_BRAKE"]['AEB_1019']
-    self.stock_aeb = bool(cp.vl["LKAS_HUD"]['AEB_BRAKE'])
-    self.stock_fcw = bool(cp.vl["LKAS_HUD"]['AEB_ALARM'])
-    self.stock_lkc_off = bool(cp.vl["LKAS_HUD"]['LDA_OFF'])
-    self.lkas_rdy = bool(cp.vl["LKAS_HUD"]['LKAS_SET'])
-    self.stock_fcw_off = bool(cp.vl["LKAS_HUD"]['FCW_DISABLE'])
+    self.stock_aeb = bool(cp.vl["LKAS_HUD"]["AEB_BRAKE"])
+    self.stock_fcw = bool(cp.vl["LKAS_HUD"]["AEB_ALARM"])
+    self.stock_lkc_off = bool(cp.vl["LKAS_HUD"]["LDA_OFF"])
+    self.lkas_rdy = bool(cp.vl["LKAS_HUD"]["LKAS_SET"])
+    self.stock_fcw_off = bool(cp.vl["LKAS_HUD"]["FCW_DISABLE"])
 
-    if bool(cp.vl["BUTTONS"]['LKC_BTN']):
+    self._update_buttons(cp, ret, v_ego_cluster)
+
+    ret.leftBlinker = bool(cp.vl["METER_CLUSTER"]["LEFT_SIGNAL"])
+    ret.rightBlinker = bool(cp.vl["METER_CLUSTER"]["RIGHT_SIGNAL"])
+    ret.genericToggle = bool(cp.vl["RIGHT_STALK"]["GENERIC_TOGGLE"])
+
+    if self.CP.enableBsm:
+      ret.leftBlindspot = bool(cp.vl["BSM"]["BSM_CHIME"])
+      ret.rightBlindspot = bool(cp.vl["BSM"]["BSM_CHIME"])
+    else:
+      ret.leftBlindspot = False
+      ret.rightBlindspot = False
+
+    return ret
+
+  def _update_buttons(self, cp, ret, v_ego_cluster):
+    """Update LKAS, gap selection, and the ACC MAIN/SET/RES latches."""
+    if bool(cp.vl["BUTTONS"]["LKC_BTN"]):
       if not self.lkas_btn_rising_edge_seen:
         self.lkas_btn_rising_edge_seen = True
 
-    if self.lkas_btn_rising_edge_seen and not bool(cp.vl["BUTTONS"]['LKC_BTN']):
+    if self.lkas_btn_rising_edge_seen and not bool(cp.vl["BUTTONS"]["LKC_BTN"]):
       self.lkas_latch = not self.lkas_latch
       self.lkas_btn_rising_edge_seen = False
 
@@ -134,15 +155,15 @@ class CarState(CarStateBase):
 
     distance_btn = cp.vl["BUTTONS"]["DISTANCE_BTN"]
     if distance_btn and not self.prev_distance_btn:
-        self.op_distance_val -= 1
-        if self.op_distance_val < 0:
-            self.op_distance_val = 2
-        be = car.CarState.ButtonEvent.new_message()
-        be.type = car.CarState.ButtonEvent.Type.gapAdjustCruise
-        be.pressed = True
-        events = list(ret.buttonEvents)
-        events.append(be)
-        ret.buttonEvents = events
+      self.op_distance_val -= 1
+      if self.op_distance_val < 0:
+        self.op_distance_val = 2
+      be = car.CarState.ButtonEvent.new_message()
+      be.type = car.CarState.ButtonEvent.Type.gapAdjustCruise
+      be.pressed = True
+      events = list(ret.buttonEvents)
+      events.append(be)
+      ret.buttonEvents = events
     self.prev_distance_btn = distance_btn
 
     # Planner-facing field used by this branch's long_mpc.py.
@@ -153,11 +174,9 @@ class CarState(CarStateBase):
     minus_button = bool(cp.vl["PCM_BUTTONS"]["SET_MINUS"])
     plus_button = bool(cp.vl["PCM_BUTTONS"]["RES_PLUS"])
 
-    # V4.0: previous latch values are updated later in this block, so this is
-    # true for exactly one CarState cycle on the physical SET or RES release.
-    self.v40_acc_rearm_edge = bool(
-      (self.is_plus_btn_latch and not plus_button) or
-      (self.is_minus_btn_latch and not minus_button)
+    # SET/RES release provides the explicit longitudinal fault rearm edge.
+    self.acc_rearm_edge = bool(
+      (self.is_plus_btn_latch and not plus_button) or (self.is_minus_btn_latch and not minus_button)
     )
 
     if self.is_cruise_latch:
@@ -165,31 +184,31 @@ class CarState(CarStateBase):
       self.dt += cur_time - self.last_frame
       self.last_frame = cur_time
 
-      if self.is_plus_btn_latch != plus_button: 
-        if not plus_button: 
+      if self.is_plus_btn_latch != plus_button:
+        if not plus_button:
           if cur_time - self.rising_edge_since < 1:
-              self.cruise_speed += CV.KPH_TO_MS
-        else: 
+            self.cruise_speed += CV.KPH_TO_MS
+        else:
           self.rising_edge_since = cur_time
           self.dt = 0
-      elif plus_button: 
+      elif plus_button:
         while self.dt >= SEC_HOLD_TO_STEP_SPEED:
           kph = self.cruise_speed * CV.MS_TO_KPH
-          kph += 5 - (kph % 5)  
+          kph += 5 - (kph % 5)
           self.cruise_speed = kph * CV.KPH_TO_MS
           self.dt -= SEC_HOLD_TO_STEP_SPEED
 
-      if self.is_minus_btn_latch != minus_button: 
-        if not minus_button: 
+      if self.is_minus_btn_latch != minus_button:
+        if not minus_button:
           if cur_time - self.rising_edge_since < 1:
             self.cruise_speed -= CV.KPH_TO_MS
-        else: 
+        else:
           self.rising_edge_since = cur_time
           self.dt = 0
-      elif minus_button: 
+      elif minus_button:
         while self.dt >= SEC_HOLD_TO_STEP_SPEED:
           kph = self.cruise_speed * CV.MS_TO_KPH
-          kph = ((kph / 5) - 1) * 5  
+          kph = ((kph / 5) - 1) * 5
           kph = max(30, kph)
           self.cruise_speed = kph * CV.KPH_TO_MS
           self.dt -= SEC_HOLD_TO_STEP_SPEED
@@ -211,10 +230,10 @@ class CarState(CarStateBase):
       self.is_cruise_latch = False
 
     self.cruise_speed = clip(self.cruise_speed, 30 * CV.KPH_TO_MS, 125 * CV.KPH_TO_MS)
-    
+
     # ACC MAIN controls availability; SET/RES controls engagement.
     ret.cruiseState.speed = self.cruise_speed
-    # V2.5U: this is software/openpilot longitudinal control, not stock ACC.
+    # Software longitudinal control owns the standstill/launch state machine.
     # Keep physical standstill in ret.standstill, but do not hold the old
     # longcontrol state machine in `stopping` forever. It can now return to
     # PID when the planner raises v_target_future after the lead moves.
@@ -227,27 +246,13 @@ class CarState(CarStateBase):
     ret.cruiseState.available = self.acc_main_latch
     ret.cruiseState.enabled = self.is_cruise_latch
 
-    ret.leftBlinker = bool(cp.vl["METER_CLUSTER"]["LEFT_SIGNAL"])
-    ret.rightBlinker = bool(cp.vl["METER_CLUSTER"]["RIGHT_SIGNAL"])
-    ret.genericToggle = bool(cp.vl["RIGHT_STALK"]["GENERIC_TOGGLE"])
-
-    if self.CP.enableBsm:
-      ret.leftBlindspot = bool(cp.vl["BSM"]["BSM_CHIME"])
-      ret.rightBlindspot = bool(cp.vl["BSM"]["BSM_CHIME"])
-    else:
-      ret.leftBlindspot = False
-      ret.rightBlindspot = False
-
-    return ret
-
   @staticmethod
   def get_can_parser(CP):
-    import os
     signals = [
-      ("WHEELSPEED_F", "WHEEL_SPEED", 0.),
+      ("WHEELSPEED_F", "WHEEL_SPEED", 0.0),
       ("GEAR", "TRANSMISSION", 0),
-      ("APPS_1", "GAS_PEDAL", 0.),
-      ("BRAKE_PRESSURE", "BRAKE", 0.),
+      ("APPS_1", "GAS_PEDAL", 0.0),
+      ("BRAKE_PRESSURE", "BRAKE", 0.0),
       ("BRAKE_ENGAGED", "BRAKE", 0),
       ("INTERCEPTOR_GAS", "GAS_SENSOR", 0),
       ("GENERIC_TOGGLE", "RIGHT_STALK", 0),
@@ -257,25 +262,25 @@ class CarState(CarStateBase):
       ("MAIN_DOOR", "METER_CLUSTER", 1),
       ("LEFT_FRONT_DOOR", "METER_CLUSTER", 1),
       ("RIGHT_BACK_DOOR", "METER_CLUSTER", 1),
-      ("LEFT_BACK_DOOR", "METER_CLUSTER", 1)
+      ("LEFT_BACK_DOOR", "METER_CLUSTER", 1),
     ]
 
     if CP.carFingerprint in ACC_CAR:
       signals += [
-        ("BSM_CHIME","BSM", 0),
-        ("SEAT_BELT_WARNING2","METER_CLUSTER", 0),
-        ("STEER_ANGLE", "STEERING_MODULE", 0.),
-        ("MAIN_TORQUE", "STEERING_MODULE", 0.),
-        ("STEERING_TORQUE", "EPS_SHAFT_TORQUE", 0.),
+        ("BSM_CHIME", "BSM", 0),
+        ("SEAT_BELT_WARNING2", "METER_CLUSTER", 0),
+        ("STEER_ANGLE", "STEERING_MODULE", 0.0),
+        ("MAIN_TORQUE", "STEERING_MODULE", 0.0),
+        ("STEERING_TORQUE", "EPS_SHAFT_TORQUE", 0.0),
         ("ACC_MAIN", "PCM_BUTTONS", 0),
         ("GAS_PRESSED", "PCM_BUTTONS_HYBRID", 0),
         ("SET_MINUS", "PCM_BUTTONS", 0),
         ("SET_MINUS", "PCM_BUTTONS_HYBRID", 0),
         ("RES_PLUS", "PCM_BUTTONS_HYBRID", 0),
         ("CANCEL", "PCM_BUTTONS_HYBRID", 0),
-        ("RES_PLUS","PCM_BUTTONS", 0),
-        ("CANCEL","PCM_BUTTONS", 0),
-        ("PEDAL_DEPRESSED","PCM_BUTTONS", 0),
+        ("RES_PLUS", "PCM_BUTTONS", 0),
+        ("CANCEL", "PCM_BUTTONS", 0),
+        ("PEDAL_DEPRESSED", "PCM_BUTTONS", 0),
         ("LKAS_ENGAGED", "LKAS_HUD", 0),
         ("LDA_OFF", "LKAS_HUD", 0),
         ("FCW_DISABLE", "LKAS_HUD", 0),
@@ -300,9 +305,9 @@ class CarState(CarStateBase):
     else:
       signals += [
         ("MAIN_TORQUE", "STEERING_TORQUE", 0),
-        ("STEER_ANGLE", "STEERING_ANGLE_SENSOR", 0.),
+        ("STEER_ANGLE", "STEERING_ANGLE_SENSOR", 0.0),
         ("AEB_ALARM", "ADAS_HUD", 0),
         ("BRAKE_REQ", "ADAS_AEB", 0),
-        ("WHEELSPEED_B", "WHEEL_SPEED", 0.)
+        ("WHEELSPEED_B", "WHEEL_SPEED", 0.0),
       ]
-    return CANParser(DBC[CP.carFingerprint]['pt'], signals, [], 0)
+    return CANParser(DBC[CP.carFingerprint]["pt"], signals, [], 0)

@@ -1,25 +1,18 @@
 #!/usr/bin/env python3
 from cereal import car, log
-from selfdrive.swaglog import cloudlog
-from selfdrive.config import Conversions as CV
-from selfdrive.car import STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness, gen_empty_fingerprint, get_safety_config
+from selfdrive.car import (
+  STD_CARGO_KG,
+  scale_rot_inertia,
+  scale_tire_stiffness,
+  gen_empty_fingerprint,
+  get_safety_config,
+)
 from selfdrive.car.interfaces import CarInterfaceBase
-from selfdrive.car.dnga.values import CAR, ACC_CAR
+from selfdrive.car.dnga.values import CAR
 from selfdrive.car.dnga.dnga_hybrid_feedback import (
   apply_hybrid_feedback_frame,
   initialize_hybrid_feedback_state,
 )
-from selfdrive.controls.lib.desire_helper import LANE_CHANGE_SPEED_MIN
-from common.params import Params
-
-try:
-  from common.features import Features
-except ImportError:
-  class Features:
-    def has(self, feature_name):
-      return False
-
-EventName = car.CarEvent.EventName
 
 
 def decode_engine_rpm_037(raw):
@@ -50,13 +43,14 @@ def decode_stock_acc_brake_271(dat):
 
   if state in (0x21, 0x31, 0x30):
     if (
-      dat[2] != 0x00 or
-      ((pump_inverse + pump_level) & 0xFF) != 0x00 or
+      dat[2] != 0x00
+      or ((pump_inverse + pump_level) & 0xFF) != 0x00
+      or
       # Stock also used 0.6/0.7/0.8 pump levels during the stronger 13:39
       # approach. Observe those frames but clamp controller authority to the
       # separately validated 0.87 envelope below.
-      pump_level not in (4, 5, 6, 7, 8) or
-      magnitude > 200
+      pump_level not in (4, 5, 6, 7, 8)
+      or magnitude > 200
     ):
       return None
   elif state in (0x00, 0x01):
@@ -91,7 +85,6 @@ def decode_stock_acc_cmd_273(dat):
 
 
 class CarInterface(CarInterfaceBase):
-
   @staticmethod
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=[]):
     ret = CarInterfaceBase.get_std_params(candidate, fingerprint)
@@ -100,41 +93,38 @@ class CarInterface(CarInterfaceBase):
     ret.safetyConfigs[0].safetyParam = 1
     ret.transmissionType = car.CarParams.TransmissionType.automatic
     ret.radarOffCan = True
-    ret.enableApgs = False                 
-    ret.enableDsu = False                  
+    ret.enableApgs = False
+    ret.enableDsu = False
 
-    ret.steerRateCost = 0.7                
-    ret.steerLimitTimer = 0.1              
-    ret.steerControlType = car.CarParams.SteerControlType.torque        
+    ret.steerRateCost = 0.7
+    ret.steerLimitTimer = 0.1
+    ret.steerControlType = car.CarParams.SteerControlType.torque
 
-    ret.lateralTuning.init('pid')
-    ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0.], [0.]]
+    ret.lateralTuning.init("pid")
+    ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0.0], [0.0]]
     ret.longitudinalTuning.kpV = [0.9, 0.8, 0.8]
 
     ret.enableGasInterceptor = False  # no physical gas interceptor
-    
-    # OP takes full ownership of gas and brakes again
+
+    # Software longitudinal control owns the accelerator and brake commands.
     ret.openpilotLongitudinalControl = True
 
-    if candidate == CAR.YARISCROSSHEV: 
+    if candidate == CAR.YARISCROSSHEV:
       ret.wheelbase = 2.620
       ret.steerRatio = 17.00
       ret.centerToFront = ret.wheelbase * 0.44
       tire_stiffness_factor = 0.7933
-      ret.mass = 1250. + STD_CARGO_KG
+      ret.mass = 1250.0 + STD_CARGO_KG
       ret.wheelSpeedFactor = 1.653
       ret.lateralTuning.pid.kiV, ret.lateralTuning.pid.kpV = [[0.14], [0.32]]
-      ret.lateralParams.torqueBP = [0., 10., 20., 35.]
-      ret.lateralParams.torqueV  = [255, 255, 255, 255]
+      ret.lateralParams.torqueBP = [0.0, 10.0, 20.0, 35.0]
+      ret.lateralParams.torqueV = [255, 255, 255, 255]
       ret.lateralTuning.pid.kf = 0.000188
-      ret.longitudinalTuning.kpBP = [0., 5., 20.]
+      ret.longitudinalTuning.kpBP = [0.0, 5.0, 20.0]
       ret.longitudinalTuning.kpV = [2.2, 2.0, 1.8]
-      ret.longitudinalTuning.kiBP = [0.]
-      ret.longitudinalTuning.kiV = [0.]
-      # V2.5S: same old speed-target longcontrol architecture as Buka
-      # release_ka2, so these delay bounds are directly compatible.
-      # Longer look-ahead anticipates the real HEV regen/hydraulic response
-      # instead of reacting after the vehicle has already overshot.
+      ret.longitudinalTuning.kiBP = [0.0]
+      ret.longitudinalTuning.kiV = [0.0]
+      # Anticipate the HEV regen/hydraulic response in the speed-target controller.
       ret.longitudinalActuatorDelayLowerBound = 0.40
       ret.longitudinalActuatorDelayUpperBound = 0.50
     else:
@@ -142,17 +132,18 @@ class CarInterface(CarInterfaceBase):
       ret.safetyModel = car.CarParams.SafetyModel.noOutput
 
     ret.minEnableSpeed = -1
-    ret.steerActuatorDelay = 0.30           
+    ret.steerActuatorDelay = 0.30
     ret.enableBsm = True
     ret.stoppingDecelRate = 0.25  # Standard smooth OP stopping curve
     ret.rotationalInertia = scale_rot_inertia(ret.mass, ret.wheelbase)
-    ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(ret.mass, ret.wheelbase, ret.centerToFront, tire_stiffness_factor=tire_stiffness_factor)
+    ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(
+      ret.mass, ret.wheelbase, ret.centerToFront, tire_stiffness_factor=tire_stiffness_factor
+    )
 
     return ret
 
-  def update(self, c, can_strings, dragonconf):
-    self.dragonconf = dragonconf
-
+  def _update_raw_can(self, can_strings):
+    """Observe bus-1 hybrid feedback and validated bus-2 camera requests."""
     if not hasattr(self.CS, "hybrid_feedback_rx_frame_275"):
       initialize_hybrid_feedback_state(self.CS)
 
@@ -176,13 +167,15 @@ class CarInterface(CarInterfaceBase):
                 self.CS.engine_rpm_raw_037 = decode_engine_rpm_037(rpm_raw)
 
             elif msg.src == 1 and msg.address in (
-              0x08C, 0x125, 0x12A, 0x275, 0x2C9,
+              0x08C,
+              0x125,
+              0x12A,
+              0x275,
+              0x2C9,
             ):
-              # Read-only V3.3R4 hybrid/brake feedback. Every candidate is
+              # Read-only hybrid/brake feedback. Every candidate is
               # length/checksum validated before it can affect the supervisor.
-              apply_hybrid_feedback_frame(
-                self.CS, self.frame, msg.address, msg.dat
-              )
+              apply_hybrid_feedback_frame(self.CS, self.frame, msg.address, msg.dat)
 
             elif msg.src == 2 and msg.address == 0x271:
               decoded = decode_stock_acc_brake_271(msg.dat)
@@ -207,6 +200,11 @@ class CarInterface(CarInterfaceBase):
       except Exception:
         pass
 
+  def update(self, c, can_strings, dragonconf):
+    self.dragonconf = dragonconf
+
+    self._update_raw_can(can_strings)
+
     self.cp.update_strings(can_strings)
 
     ret = self.CS.update(self.cp)
@@ -222,10 +220,20 @@ class CarInterface(CarInterfaceBase):
 
   def apply(self, c):
     hud_control = c.hudControl
-    can_sends = self.CC.update(c.enabled, c.active, self.CS, self.frame,
-                               c.actuators, c.cruiseControl.cancel,
-                               hud_control.visualAlert, hud_control.leftLaneVisible,
-                               hud_control.rightLaneVisible, hud_control.leadVisible,
-                               hud_control.leftLaneDepart, hud_control.rightLaneDepart, self.dragonconf)
+    can_sends = self.CC.update(
+      c.enabled,
+      c.active,
+      self.CS,
+      self.frame,
+      c.actuators,
+      c.cruiseControl.cancel,
+      hud_control.visualAlert,
+      hud_control.leftLaneVisible,
+      hud_control.rightLaneVisible,
+      hud_control.leadVisible,
+      hud_control.leftLaneDepart,
+      hud_control.rightLaneDepart,
+      self.dragonconf,
+    )
     self.frame += 1
     return can_sends
