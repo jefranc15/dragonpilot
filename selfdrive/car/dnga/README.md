@@ -41,7 +41,7 @@ The checks cover engagement and pedal overrides, all three distance settings, le
 and loss, stock and predictive stop guards, crawl/hold/resume, highway handoff, low-speed
 wake and overshoot, stale/malformed subscribers, hybrid freshness/agreement/overlap faults,
 and explicit rearm. Separate checks compare 6,000 button cycles, all 65,536 raw RPM values,
-hybrid and stock-frame decoders, car parameters, passive observation, and both DBC copies.
+hybrid and stock-frame decoders, car parameters, passive observation, and `opendbc/dnga_hev.dbc`.
 
 Validation: 11 checks passed, including 64,623 control frames and 107,710 emitted CAN messages.
 All five brake states and all four longitudinal fault reasons were exercised. Python 3.8
