@@ -351,8 +351,13 @@ class LongitudinalController:
   def _update_session(self, enabled, CS, pcm_cancel_cmd):
     # ACC session/HUD state is independent of 0x275-family feedback.
     # Driver gas suspends actuation but keeps the visible SET session alive.
-    session_enabled = enabled and CS.out.cruiseState.enabled and (not pcm_cancel_cmd) and (not CS.out.brakePressed)
-    control_allowed = session_enabled and (not CS.out.gasPressed)
+    session_enabled = enabled and CS.out.cruiseState.enabled
+    control_allowed = (
+      session_enabled
+      and (not pcm_cancel_cmd)
+      and (not CS.out.gasPressed)
+      and (not CS.out.brakePressed)
+    )
     feedback = hybrid_feedback_snapshot(CS, frame)
     feedback_clean = feedback["fresh"] and feedback["consistent"]
     gas_override = session_enabled and CS.out.gasPressed
