@@ -4,7 +4,7 @@ from opendbc.can.can_define import CANDefine
 from common.numpy_fast import mean, clip
 from selfdrive.config import Conversions as CV
 from selfdrive.car.interfaces import CarStateBase
-from selfdrive.car.dnga.values import DBC, ACC_CAR, HUD_MULTIPLIER
+from selfdrive.car.dnga.values import DBC, ACC_CAR, HUD_MULTIPLIER, CarControllerParams
 from time import time
 
 SEC_HOLD_TO_STEP_SPEED = 0.6
@@ -22,8 +22,10 @@ class CarState(CarStateBase):
 
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
-    # SET/RES release provides the explicit longitudinal fault rearm edge.
+    # Stretch SET/RES release across one full longitudinal period so the
+    # 20 Hz controller cannot miss a 100 Hz button edge.
     self.acc_rearm_edge = False
+    self.acc_rearm_frames = 0
     self.prev_distance_btn = False
     # Local enum used by dngacan/carcontroller:
     #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
@@ -174,10 +176,16 @@ class CarState(CarStateBase):
     minus_button = bool(cp.vl["PCM_BUTTONS"]["SET_MINUS"])
     plus_button = bool(cp.vl["PCM_BUTTONS"]["RES_PLUS"])
 
-    # SET/RES release provides the explicit longitudinal fault rearm edge.
-    self.acc_rearm_edge = bool(
+    # Stretch a physical SET/RES release for exactly one 20 Hz long-control
+    # period. This preserves edge semantics while making it phase-independent.
+    release_rearm_edge = bool(
       (self.is_plus_btn_latch and not plus_button) or (self.is_minus_btn_latch and not minus_button)
     )
+    if release_rearm_edge:
+      self.acc_rearm_frames = CarControllerParams.ACC_STEP
+    self.acc_rearm_edge = self.acc_rearm_frames > 0
+    if self.acc_rearm_frames > 0:
+      self.acc_rearm_frames -= 1
 
     if self.is_cruise_latch:
       cur_time = time()
