@@ -1,4 +1,4 @@
-"""DNGA longitudinal control: lead braking, stop-and-go, and hybrid handoff."""
+"""DNGA longitudinal control: V3.3-style ACC behavior with read-only HEV handoff feedback."""
 
 from dataclasses import dataclass
 
@@ -112,6 +112,11 @@ def progressive_brake_cap(v_ego):
   return float(interp(v_ego, [8.0, 15.0, 25.0, 35.0], [P.HIGHWAY_BRAKE_CAP_MIN, 0.27, 0.29, P.HIGHWAY_BRAKE_CAP_MAX]))
 
 
+def powertrain_decel_cap(v_ego):
+  """Maximum below-vEgo 0x273 offset used for smooth lead deceleration."""
+  return float(interp(v_ego, [0.0, 4.0, 15.0, 25.0, 35.0], [0.08, 0.15, 0.28, 0.40, 0.45]))
+
+
 def encode_hev_brake(brake_cmd):
   """Return (negative pump reaction, legacy combined raw magnitude)."""
   brake_cmd = float(clip(brake_cmd, P.BRAKE_MIN, P.STOP_BRAKE_MAX))
@@ -169,8 +174,6 @@ class PropulsionState:
 class LongitudinalController:
   def __init__(self):
     self.prev_enabled = False
-    self.fault_latched = False
-    self.fault_reason = ""
     self._reset(0, 0.0)
     self.plan_source = ""
     self.plan_accel = 0.0
@@ -194,7 +197,7 @@ class LongitudinalController:
       self.radar_sm = None
 
   def _reset(self, frame, a_ego):
-    """Reset engagement state; fault latches and subscriber history survive."""
+    """Reset engagement-local longitudinal state; subscriber history survives."""
     self.block_brake_until_frame = frame
     self.apply_brake = 0.0
     self.brake_target = 0.0
@@ -215,6 +218,8 @@ class LongitudinalController:
     self.urgent_brake = False
     self.handoff_counter = 0
     self.handoff_active = False
+    self.handoff_pending = False
+    self.handoff_ready_counter = 0
     self.low_speed_neutral_until_frame = frame
     self.low_speed_arm_start_frame = -1000000
     self.low_speed_overshoot_block_until_frame = frame
@@ -227,29 +232,16 @@ class LongitudinalController:
     self.overshoot_counter = 0
     self.overshoot_block_until_frame = frame
     self.filtered_aego = a_ego
-    self.decel_latched = False
     self.release_pump_until_frame = frame
     self.predictive_entry_counter = 0
     self.stop_guard_latched = False
-    self.feedback_disagree_counter = 0
-    self.brake_clear_counter = 0
-    self.torque_ready_counter = 0
-    self.overlap_entry_frame = -1000000
-    self.overlap_entry_torque = 0
-    self.overlap_torque_cleared = False
-    self.positive_overlap_counter = 0
 
   def _start_staged_release(self, frame):
-    # Preserve the stock FC/04/C8 release interval. Physical feedback separately
-    # decides when normal mode and positive target ramp can resume.
-    self.decel_latched = True
+    """Start stock-observed release framing and feedback-gated propulsion handoff."""
+    self.handoff_pending = True
+    self.handoff_ready_counter = 0
     self.release_pump_until_frame = max(self.release_pump_until_frame, frame + P.RELEASE_PUMP_FRAMES)
-    self.release_freeze_until_frame = max(self.release_freeze_until_frame, frame + P.RELEASE_FREEZE_FRAMES)
     self.release_lead_until_frame = max(self.release_lead_until_frame, frame + P.RELEASE_LEAD_HOLD_FRAMES)
-    self.target_slope_unlock_frame = max(self.target_slope_unlock_frame, frame + P.TARGET_SLOPE_UNLOCK_FRAMES)
-    self.propulsion_block_until_frame = max(
-      self.propulsion_block_until_frame, frame + P.RELEASE_PROPULSION_BLOCK_FRAMES
-    )
     self.speed_offset = min(0.0, self.speed_offset)
 
   def _clear_hydraulic(self, frame, reentry=True, propulsion_dwell=True):
@@ -266,23 +258,6 @@ class LongitudinalController:
     self.stop_guard_latched = False
     if reentry:
       self.brake_reentry_frame = frame + P.REENTRY_BLOCK_FRAMES
-    if propulsion_dwell:
-      self.propulsion_block_until_frame = frame + P.PROPULSION_DWELL_FRAMES
-
-  def _latch_fault(self, CS, reason):
-    """Fail non-propulsive and require the existing SET/RES latch to re-arm."""
-    self.fault_latched = True
-    self.fault_reason = str(reason)
-    self.brake_clear_counter = 0
-    self.torque_ready_counter = 0
-    self.overlap_entry_frame = -1000000
-    self.overlap_entry_torque = 0
-    self.overlap_torque_cleared = False
-    self.positive_overlap_counter = 0
-    self.speed_offset = 0.0
-    # A longitudinal fault leaves the cruise latch and lateral session intact.
-    CS.hybrid_feedback_fault = True
-    CS.hybrid_feedback_fault_reason = self.fault_reason
 
   def _update_messages(self, frame):
     if self.plan_sm is not None:
@@ -380,33 +355,18 @@ class LongitudinalController:
     )
 
   def _update_session(self, enabled, CS, frame, pcm_cancel_cmd, engagement_edge):
-    # Driver gas preserves the visible ACC session while suspending actuation.
-    base_session_allowed = enabled and CS.out.cruiseState.enabled and (not pcm_cancel_cmd) and (not CS.out.brakePressed)
-    base_control_allowed = base_session_allowed and (not CS.out.gasPressed)
+    # ACC session/HUD state is independent of 0x275-family feedback.
+    # Driver gas suspends actuation but keeps the visible SET session alive.
+    session_enabled = enabled and CS.out.cruiseState.enabled and (not pcm_cancel_cmd) and (not CS.out.brakePressed)
+    control_allowed = session_enabled and (not CS.out.gasPressed)
     feedback = hybrid_feedback_snapshot(CS, frame)
     feedback_clean = feedback["fresh"] and feedback["consistent"]
-    rearm_ok = feedback_clean and feedback["brakes_clear"]
-    rearm_edge = engagement_edge or bool(getattr(CS, "acc_rearm_edge", False))
-    if rearm_edge and self.fault_latched:
-      if rearm_ok:
-        self.fault_latched = False
-        self.fault_reason = ""
-      else:
-        self._latch_fault(CS, "feedback_not_safe_to_rearm")
-    if base_control_allowed and (not feedback["fresh"]):
-      self._latch_fault(CS, "hybrid_feedback_stale")
-    elif base_control_allowed and (not feedback["consistent"]):
-      self.feedback_disagree_counter = min(self.feedback_disagree_counter + 1, P.DISAGREE_FAULT_COUNT)
-      if self.feedback_disagree_counter >= P.DISAGREE_FAULT_COUNT:
-        self._latch_fault(CS, "hybrid_torque_feedback_disagrees")
-    else:
-      self.feedback_disagree_counter = 0
-    control_allowed = base_control_allowed and (not self.fault_latched)
-    longitudinal_session_allowed = base_session_allowed and (not self.fault_latched)
-    gas_override_active = longitudinal_session_allowed and CS.out.gasPressed
-    CS.hybrid_feedback_fault = self.fault_latched
-    CS.hybrid_feedback_fault_reason = self.fault_reason
-    return SessionState(control_allowed, longitudinal_session_allowed, gas_override_active, feedback, feedback_clean)
+    gas_override = session_enabled and CS.out.gasPressed
+
+    # Feedback remains observation only; never latch cruise/HUD/lateral state.
+    CS.hybrid_feedback_fault = False
+    CS.hybrid_feedback_fault_reason = ""
+    return SessionState(control_allowed, session_enabled, gas_override, feedback, feedback_clean)
 
   def _update_stop_guard(self, CS, frame, brake_request, moving_allowed, lead_state):
     """Use validated camera braking or trusted closing geometry as a brake-only floor."""
@@ -644,9 +604,9 @@ class LongitudinalController:
         and (not self.urgent_brake)
         and (not self.sng_armed)
         and (not stop_completion_active)
-        and (plan.accel >= P.DECEL_CLEAR_PLANNER_ACCEL)
-        and (apply_accel >= P.DECEL_CLEAR_PID_ACCEL)
-        and (CS.out.aEgo >= P.DECEL_CLEAR_AEGO)
+        and (plan.brake < lead_hydraulic_entry)
+        and (apply_accel >= P.HANDOFF_PID_ACCEL)
+        and (CS.out.aEgo <= P.HANDOFF_AEGO_MAX)
       )
       if handoff_candidate and (not self.handoff_active):
         self.handoff_counter = min(self.handoff_counter + 1, P.HANDOFF_COUNT)
@@ -787,7 +747,6 @@ class LongitudinalController:
         )
       ):
         self.sng_armed = True
-      self.propulsion_block_until_frame = max(self.propulsion_block_until_frame, frame + P.PROPULSION_DWELL_FRAMES)
     if (
       self.sng_armed
       and (not self.stop_hold)
@@ -798,57 +757,8 @@ class LongitudinalController:
     ):
       self.sng_armed = False
     hydraulic_req = self.brake_active and self.apply_brake >= P.BRAKE_MIN
-    release_pump_active = (
-      session.allowed
-      and (not hydraulic_req)
-      and (
-        frame < self.release_pump_until_frame
-        or (self.decel_latched and session.feedback_clean and (not session.feedback["brakes_clear"]))
-      )
-    )
+    release_pump_active = session.allowed and (not hydraulic_req) and (frame < self.release_pump_until_frame)
     return BrakeRequest(hydraulic_req, release_pump_active, sng_release_active)
-
-  def _check_torque_overlap(self, CS, frame, session, plan, brake):
-    # Start the allowance at physical friction/positive-torque overlap. A return
-    # to positive torque after neutral must not receive another entry allowance.
-    negative_intent = session.allowed and (
-      brake.hydraulic or brake.release_pump or self.decel_latched or (plan.fresh and plan.brake >= P.DECEL_LATCH_BRAKE)
-    )
-    positive_under_friction = (
-      session.allowed
-      and session.feedback_clean
-      and (session.feedback["friction"] > 0)
-      and session.feedback["positive_vote"]
-    )
-    if not negative_intent:
-      self.overlap_entry_frame = -1000000
-      self.overlap_entry_torque = 0
-      self.overlap_torque_cleared = False
-    elif session.feedback_clean and session.feedback["torque_actual"] <= 80:
-      self.overlap_torque_cleared = True
-    if positive_under_friction and self.overlap_entry_frame < 0:
-      self.overlap_entry_frame = frame
-      self.overlap_entry_torque = session.feedback["torque_actual"]
-    overlap_started = self.overlap_entry_frame >= 0
-    overlap_age = frame - self.overlap_entry_frame if overlap_started else 0
-    overlap_rising = (
-      positive_under_friction
-      and overlap_started
-      and (session.feedback["torque_actual"] > max(80, self.overlap_entry_torque + P.ENTRY_TORQUE_RISE_RAW))
-    )
-    overlap_unsafe = positive_under_friction and (
-      not negative_intent
-      or self.overlap_torque_cleared
-      or (overlap_started and overlap_age > P.ENTRY_OVERLAP_FRAMES)
-      or overlap_rising
-    )
-    if overlap_unsafe:
-      self.positive_overlap_counter = min(self.positive_overlap_counter + 1, P.OVERLAP_FAULT_COUNT)
-    else:
-      self.positive_overlap_counter = 0
-    if self.positive_overlap_counter >= P.OVERLAP_FAULT_COUNT:
-      self._latch_fault(CS, "positive_torque_under_friction_braking")
-      session.allowed = False
 
   def _encode_brake(self, CS, enabled, brake):
     brake.state = BrakeState.READY if enabled else BrakeState.DISABLED
@@ -873,73 +783,51 @@ class LongitudinalController:
       brake.pump = -0.4
       brake.magnitude = 4 << 8 | 200
 
-  def _update_decel_latch(self, frame, session, propulsion, plan, lead_state, brake):
-    # The protocol release timer alone cannot keep re-requesting deceleration.
-    # Clear the latch from fresh brake feedback and sustained positive agreement.
-    decel_latch_request = session.allowed and (
+  def _update_handoff_feedback(self, session, propulsion, brake):
+    """Use HEV feedback only when crossing from deceleration to propulsion."""
+    decel_commanded = (
       brake.hydraulic
       or brake.sng_release
-      or (plan.fresh and plan.brake >= P.DECEL_LATCH_BRAKE)
+      or (propulsion.accel <= -P.DECEL_DEADBAND)
       or (self.speed_offset < -P.SPEED_OFFSET_EPS)
     )
-    if not session.allowed:
-      self.decel_latched = False
-      self.brake_clear_counter = 0
-      self.torque_ready_counter = 0
-      self.overlap_entry_frame = -1000000
-      self.overlap_entry_torque = 0
-      self.overlap_torque_cleared = False
-      self.positive_overlap_counter = 0
-      self.release_pump_until_frame = frame
-      self.predictive_entry_counter = 0
-      self.stop_guard_latched = False
-    elif decel_latch_request:
-      self.decel_latched = True
-      self.brake_clear_counter = 0
-      self.torque_ready_counter = 0
-    elif self.decel_latched:
-      decel_clear_candidate = (
-        propulsion.positive_agreement
-        and (not self.stop_hold)
-        and (not brake.hydraulic)
-        and (not brake.sng_release)
-        and session.feedback_clean
-        and session.feedback["brakes_clear"]
-        and (not lead_state.relevant or propulsion.lead_nonblocking)
-      )
-      if decel_clear_candidate:
-        self.brake_clear_counter = min(self.brake_clear_counter + 1, P.BRAKE_CLEAR_COUNT)
-      else:
-        self.brake_clear_counter = 0
-      if self.brake_clear_counter >= P.BRAKE_CLEAR_COUNT:
-        self.decel_latched = False
-        self.brake_clear_counter = 0
-        self.torque_ready_counter = 0
-        self.positive_overlap_counter = 0
+    if decel_commanded:
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
 
-  def _update_torque_ready(self, session, propulsion, brake):
-    # Brake clearance can arm normal mode at current speed. Positive target
-    # buildup also requires torque readiness for the full confirmation count.
-    propulsion.accel_arm_ready = session.allowed and session.feedback_clean and session.feedback["brakes_clear"]
-    torque_ready_candidate = (
-      propulsion.accel_arm_ready
-      and session.feedback["torque_ramp_ready"]
+    if not session.enabled:
+      self.handoff_pending = False
+      self.handoff_ready_counter = 0
+      propulsion.ramp_ready = True
+      return
+
+    ready_candidate = (
+      self.handoff_pending
       and (not brake.hydraulic)
-      and (not self.decel_latched)
-      and propulsion.positive_agreement
+      and (not brake.sng_release)
+      and (propulsion.accel > -P.DECEL_DEADBAND)
+      and (self.speed_offset >= -P.SPEED_OFFSET_EPS)
+      and session.feedback_clean
+      and session.feedback["brakes_clear"]
+      and session.feedback["torque_ramp_ready"]
     )
-    if torque_ready_candidate:
-      self.torque_ready_counter = min(self.torque_ready_counter + 1, P.TORQUE_READY_COUNT)
-    else:
-      self.torque_ready_counter = 0
-    propulsion.ramp_ready = self.torque_ready_counter >= P.TORQUE_READY_COUNT
+    if ready_candidate:
+      self.handoff_ready_counter = min(self.handoff_ready_counter + 1, P.HYBRID_READY_COUNT)
+    elif self.handoff_pending:
+      self.handoff_ready_counter = 0
+
+    if self.handoff_pending and self.handoff_ready_counter >= P.HYBRID_READY_COUNT:
+      self.handoff_pending = False
+      self.handoff_ready_counter = 0
+
+    propulsion.ramp_ready = not self.handoff_pending
 
   def _update_low_speed_arm(self, CS, frame, session, propulsion, brake):
     propulsion.low_speed_request = (
       session.allowed
       and (not brake.hydraulic)
       and (not brake.sng_release)
-      and (not self.decel_latched)
+      and propulsion.ramp_ready
       and (not self.stop_hold)
       and (CS.out.vEgo < P.LOW_SPEED_MAX)
       and propulsion.positive_agreement
@@ -971,7 +859,8 @@ class LongitudinalController:
       self.overshoot_counter = 0
     if self.overshoot_counter >= P.OVERSHOOT_CONFIRM_COUNT:
       self.speed_offset = 0.0
-      self.decel_latched = True
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
       self.overshoot_block_until_frame = frame + P.OVERSHOOT_BLOCK_FRAMES
       self.target_slope_unlock_frame = max(self.target_slope_unlock_frame, frame + P.TARGET_SLOPE_UNLOCK_FRAMES)
       self.release_lead_until_frame = max(self.release_lead_until_frame, frame + P.RELEASE_LEAD_HOLD_FRAMES)
@@ -987,7 +876,8 @@ class LongitudinalController:
     )
     if low_speed_overshoot:
       self.speed_offset = 0.0
-      self.decel_latched = True
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
       self.low_speed_overshoot_block_until_frame = frame + P.LOW_SPEED_OVERSHOOT_BLOCK_FRAMES
       self.low_speed_neutral_until_frame = max(
         self.low_speed_neutral_until_frame, frame + P.LOW_SPEED_NEUTRAL_DWELL_FRAMES
@@ -996,20 +886,53 @@ class LongitudinalController:
 
   def _update_speed_offset(self, CS, frame, session, propulsion, plan, brake):
     t_lookup = 0.35 + 0.07 * CS.out.vEgo
+
     if not session.allowed:
       self.speed_offset = 0.0
-      self.release_freeze_until_frame = frame
-      self.release_lead_until_frame = frame
-      self.target_slope_unlock_frame = frame
-      self.overshoot_counter = 0
-      self.decel_latched = False
-      self.release_pump_until_frame = frame
-    elif brake.hydraulic or brake.sng_release or self.decel_latched:
+      if not session.enabled:
+        self.handoff_pending = False
+        self.handoff_ready_counter = 0
+      return
+
+    if brake.hydraulic or brake.sng_release:
       self.speed_offset = 0.0
-    elif (
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
+      return
+
+    # Known-good V3.3 behavior: trusted-lead decel uses a lowered normal 0x273
+    # target before/after hydraulic braking. No-lead negative targets stay off.
+    if (
+      propulsion.accel <= -P.DECEL_DEADBAND
+      and frame > self.block_brake_until_frame
+      and frame >= self.brake_reentry_frame
+    ):
+      target_offset = -min(
+        powertrain_decel_cap(CS.out.vEgo),
+        max(0.0, -propulsion.accel) * t_lookup,
+      )
+      if self.speed_offset > 0.0:
+        self.speed_offset = 0.0
+      elif target_offset < self.speed_offset:
+        self.speed_offset = max(target_offset, self.speed_offset - P.DECEL_OFFSET_STEP_DOWN)
+      else:
+        self.speed_offset = min(target_offset, self.speed_offset + P.DECEL_OFFSET_STEP_UP)
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
+      return
+
+    # Never cross directly from a negative target to positive propulsion.
+    if self.speed_offset < -P.SPEED_OFFSET_EPS:
+      self.speed_offset = min(0.0, self.speed_offset + P.TARGET_RETURN_STEP)
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
+      return
+    if self.speed_offset < 0.0:
+      self.speed_offset = 0.0
+
+    if (
       propulsion.accel >= P.ACCEL_ENTRY
       and (not propulsion.blocked)
-      and (frame >= self.neutral_dwell_until_frame)
       and (not plan.has_lead or not plan.fresh or propulsion.lead_confirmed or propulsion.low_speed_request)
       and (CS.out.vEgo >= P.LOW_SPEED_MAX or propulsion.arm_complete)
     ):
@@ -1026,23 +949,14 @@ class LongitudinalController:
         accel_cap = propulsion.accel_cap if plan.has_lead and plan.fresh else P.ACCEL_CAP
         offset_cap = 0.3 if plan.has_lead and plan.fresh else P.ACCEL_OFFSET_MAX
         accel_step_up = P.ACCEL_OFFSET_STEP_UP
+
       target_offset = min(offset_cap, min(propulsion.accel, accel_cap) * t_lookup)
-      if self.speed_offset < 0.0:
-        self.speed_offset = min(0.0, self.speed_offset + P.TARGET_RETURN_STEP)
-      elif target_offset > self.speed_offset:
+      if target_offset > self.speed_offset:
         self.speed_offset = min(target_offset, self.speed_offset + accel_step_up)
       else:
         self.speed_offset = max(target_offset, self.speed_offset - P.ACCEL_OFFSET_STEP_DOWN)
-    elif self.speed_offset < 0.0:
-      if frame >= self.target_slope_unlock_frame and CS.out.aEgo >= P.PROPULSION_AEGO_MIN:
-        self.speed_offset = min(0.0, self.speed_offset + P.TARGET_RETURN_STEP)
-    else:
-      self.speed_offset = 0.0
-    if propulsion.release_freeze:
-      self.speed_offset = min(0.0, self.speed_offset)
-    if propulsion.arm_active:
-      # The low-speed wake stage uses the lead bit at an exact current-speed target.
-      self.speed_offset = 0.0
+    elif self.speed_offset > 0.0:
+      self.speed_offset = max(0.0, self.speed_offset - P.ACCEL_OFFSET_STEP_DOWN)
 
   def _build_command(self, CS, frame, session, plan, lead_state, brake, propulsion):
     longitudinal_enabled = session.enabled
@@ -1058,42 +972,30 @@ class LongitudinalController:
       des_speed = CS.out.vEgo
     elif self.stop_hold or brake.sng_release:
       des_speed = 0.0
-    elif brake.hydraulic or self.decel_latched:
+    elif brake.hydraulic:
       des_speed = CS.out.vEgo
     else:
       des_speed = max(0.0, CS.out.vEgo + self.speed_offset)
-    low_speed_handoff_blocked = longitudinal_enabled and CS.out.vEgo < P.LOW_SPEED_MAX and (not propulsion.arm_complete)
+
+    # V3.3 stock-observed 0x273 mode table. Feedback does not own HUD state.
     if not longitudinal_enabled:
       acc_cmd_is_accel = False
-      acc_cmd_is_decel = False
-    elif session.gas_override:
-      acc_cmd_is_accel = True
       acc_cmd_is_decel = False
     elif brake.state == BrakeState.HOLD:
       acc_cmd_is_accel = True
       acc_cmd_is_decel = True
-    elif brake.release_pump and (not self.decel_latched) and propulsion.accel_arm_ready and plan.fresh:
-      acc_cmd_is_accel = True
-      acc_cmd_is_decel = False
-    elif (
-      brake.state in (BrakeState.BRAKING, BrakeState.CREEPING)
-      or brake.sng_release
-      or self.decel_latched
-      or low_speed_handoff_blocked
-      or (not propulsion.accel_arm_ready)
-      or (not plan.fresh)
-    ):
+    elif brake.state in (BrakeState.BRAKING, BrakeState.CREEPING) or brake.sng_release:
       acc_cmd_is_accel = False
       acc_cmd_is_decel = True
     else:
       acc_cmd_is_accel = True
       acc_cmd_is_decel = False
+
     low_speed_accel_unlock = (
       longitudinal_enabled
       and propulsion.low_speed_request
       and (not brake.hydraulic)
       and (not brake.sng_release)
-      and (not self.decel_latched)
       and propulsion.ramp_ready
       and (not self.stop_hold)
       and (frame >= self.low_speed_neutral_until_frame)
@@ -1102,9 +1004,7 @@ class LongitudinalController:
     )
     lead_for_acc_cmd = bool(
       longitudinal_enabled
-      and (
-        lead_state.visible or low_speed_accel_unlock or propulsion.release_lead or self.decel_latched or self.stop_hold
-      )
+      and (lead_state.visible or low_speed_accel_unlock or propulsion.release_lead or self.stop_hold)
     )
     return LongitudinalCommand(
       longitudinal_enabled,
@@ -1119,14 +1019,11 @@ class LongitudinalController:
 
   def _update_propulsion(self, CS, frame, session, apply_accel, plan, lead_state, brake):
     propulsion = PropulsionState()
-    propulsion.release_freeze = session.allowed and frame < self.release_freeze_until_frame
-    propulsion.release_lead = session.allowed and frame < self.release_lead_until_frame
+    propulsion.release_lead = session.enabled and frame < self.release_lead_until_frame
     propulsion.engagement_guard = (
       session.allowed and CS.out.vEgo < P.LOW_SPEED_ENGAGEMENT_MAX and (frame < self.low_speed_guard_until_frame)
     )
-    propulsion.positive_agreement = (
-      plan.fresh and plan.accel >= P.DECEL_CLEAR_PLANNER_ACCEL and (apply_accel >= P.DECEL_CLEAR_PID_ACCEL)
-    )
+    propulsion.positive_agreement = plan.fresh and plan.accel >= P.ACCEL_ENTRY and apply_accel > 0.0
     propulsion.departing_lead = (
       lead_state.status
       and lead_state.relative_speed >= P.DEPARTING_LEAD_VREL
@@ -1140,45 +1037,27 @@ class LongitudinalController:
     propulsion.lead_nonblocking = (
       not lead_state.status or propulsion.departing_lead or propulsion.distant_nonclosing_lead
     )
-    self._update_decel_latch(frame, session, propulsion, plan, lead_state, brake)
-    target_slope_lock = (
-      brake.hydraulic or self.decel_latched or propulsion.release_freeze or (self.speed_offset < -P.SPEED_OFFSET_EPS)
-    )
-    if target_slope_lock:
-      self.target_slope_unlock_frame = max(self.target_slope_unlock_frame, frame + P.TARGET_SLOPE_UNLOCK_FRAMES)
-    self._update_torque_ready(session, propulsion, brake)
-    propulsion.blocked = (
-      brake.hydraulic
-      or self.decel_latched
-      or (not propulsion.ramp_ready)
-      or (not plan.fresh)
-      or (frame < self.propulsion_block_until_frame)
-      or (frame < self.target_slope_unlock_frame)
-      or (frame < self.overshoot_block_until_frame)
-      or propulsion.release_freeze
-      or propulsion.engagement_guard
-    )
+
     if plan.fresh:
-      if plan.accel < 0.0:
-        # Qualified lead braking belongs to the hydraulic path. Do not create
-        # a negative desired-speed target for no-lead or curve-only deceleration.
-        propulsion.accel = 0.0
+      if plan.accel < 0.0 and lead_state.relevant:
+        propulsion.accel = plan.accel
       elif plan.accel > 0.0 and apply_accel > 0.0:
         propulsion.accel = min(plan.accel + 0.08, 0.75 * plan.accel + 0.25 * apply_accel)
       else:
         propulsion.accel = 0.0
     else:
       propulsion.accel = apply_accel if apply_accel >= 0.0 else 0.0
-    if self.speed_offset < 0.0:
-      self.speed_offset = 0.0
-    regen_or_brake_active = brake.hydraulic or brake.sng_release or self.decel_latched
-    if regen_or_brake_active:
-      self.neutral_dwell_until_frame = max(self.neutral_dwell_until_frame, frame + P.NEUTRAL_DWELL_FRAMES)
-      if CS.out.vEgo < P.LOW_SPEED_MAX:
-        self.low_speed_neutral_until_frame = max(
-          self.low_speed_neutral_until_frame, frame + P.LOW_SPEED_NEUTRAL_DWELL_FRAMES
-        )
-        self.low_speed_arm_start_frame = -1000000
+
+    self._update_handoff_feedback(session, propulsion, brake)
+    propulsion.blocked = (
+      brake.hydraulic
+      or brake.sng_release
+      or (not propulsion.ramp_ready)
+      or (not plan.fresh)
+      or (frame < self.overshoot_block_until_frame)
+      or propulsion.engagement_guard
+    )
+
     if plan.has_lead and plan.fresh:
       if plan.accel >= P.PLANNER_ACCEL_ENTRY and apply_accel > 0.0:
         self.lead_accel_counter = min(self.lead_accel_counter + 1, P.LEAD_ACCEL_CONFIRM_COUNT)
@@ -1187,6 +1066,7 @@ class LongitudinalController:
     else:
       self.lead_accel_counter = P.LEAD_ACCEL_CONFIRM_COUNT
     propulsion.lead_confirmed = self.lead_accel_counter >= P.LEAD_ACCEL_CONFIRM_COUNT
+
     self._update_low_speed_arm(CS, frame, session, propulsion, brake)
     self._check_overshoot(CS, frame, session, propulsion, lead_state, brake)
     propulsion.accel_cap = distance_profile(int(clip(getattr(CS, "op_distance_val", 1), 0, 2)))[2]
@@ -1208,6 +1088,5 @@ class LongitudinalController:
     lead_state = self._update_lead(CS, frame, lead, plan)
     session = self._update_session(enabled, CS, frame, pcm_cancel_cmd, engagement_edge)
     brake = self._update_hydraulic(CS, frame, session, apply_accel, plan, lead_state)
-    self._check_torque_overlap(CS, frame, session, plan, brake)
-    self._encode_brake(CS, enabled, brake)
+    self._encode_brake(CS, session.enabled, brake)
     return self._update_propulsion(CS, frame, session, apply_accel, plan, lead_state, brake)
