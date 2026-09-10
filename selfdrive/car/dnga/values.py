@@ -123,7 +123,7 @@ class LongitudinalParams:
   CREEP_GUARD_MAX_EGO = 1.0
   CREEP_GUARD_MIN_CLOSING = 0.05
   CREEP_ENTRY_COUNT = 2
-  CREEP_BRAKE_FLOOR = 0.18
+  CREEP_BRAKE_FLOOR = 0.24
 
   # Brake release, target slope, and propulsion dwell.
   RELEASE_FREEZE_FRAMES = 30
@@ -159,15 +159,18 @@ class LongitudinalParams:
   STOP_GUARD_MAX_SPEED = 8.0
   STOP_GUARD_MAX_DISTANCE = 20.0
   STOP_GUARD_MIN_CLOSING = 0.2
-  STOP_GUARD_MIN_PID_BRAKE = 0.05
+  # The validated stock-camera pair already proves brake intent. Do not let a
+  # temporarily positive downstream PID command veto entry into that brake-only
+  # path. Predictive fallback is tightened below because it now shares this gate.
+  STOP_GUARD_MIN_PID_BRAKE = 0.0
   STOP_GUARD_MIN_STOCK_BRAKE = 0.08
-  PREDICTIVE_MIN_CLOSING = 0.5
-  PREDICTIVE_MAX_TTC = 25.0
+  PREDICTIVE_MIN_CLOSING = 0.7
+  PREDICTIVE_MAX_TTC = 15.0
   PREDICTIVE_MAX_LEAD_SPEED = 5.5
-  PREDICTIVE_ENTRY_COUNT = 2
+  PREDICTIVE_ENTRY_COUNT = 3
   PREDICTIVE_STANDSTILL_GAP = 5.0
   PREDICTIVE_REACTION_TIME = 0.35
-  PREDICTIVE_INITIAL_BRAKE = 0.13
+  PREDICTIVE_INITIAL_BRAKE = 0.16
   STOCK_INITIAL_BRAKE_MAX = 0.36
   STOP_BRAKE_MAX = 0.87
   STOP_BRAKE_FILTER_UP = 0.3
@@ -214,7 +217,7 @@ class LongitudinalParams:
   STOP_COMPLETION_MAX_EGO_SPEED = 0.8
   CRAWL_MAX_LEAD_SPEED = 0.5
   CRAWL_MAX_LEAD_DISTANCE = 8.0
-  STOP_COMPLETION_BRAKE_FLOOR = 0.18
+  STOP_COMPLETION_BRAKE_FLOOR = 0.24
 
 
 class BrakeState:
