@@ -87,11 +87,6 @@ class CarController:
       )
     command = self.longitudinal.update(enabled, CS, frame, actuators.accel, pcm_cancel_cmd, lead)
     if command is not None:
-      # 0x274 is the only LKAS HUD frame the cluster sees while the stock camera
-      # frames are blocked. Keep its LKA state self-consistent and independent
-      # from ACC MAIN so it cannot interfere with the ACC SET display.
-      lkas_hud_ready = bool(CS.lkas_latch)
-      lkas_hud_enabled = bool(enabled and CS.lkas_latch)
       can_sends.append(
         dnga_create_accel_command(
           self.packer,
@@ -113,15 +108,15 @@ class CarController:
       can_sends.append(
         dnga_create_hud(
           self.packer,
-          lkas_hud_ready,
-          lkas_hud_enabled,
+          CS.out.cruiseState.available and CS.lkas_latch,
+          enabled,
           left_line,
           right_line,
           self.stock_ldw,
           CS.stock_fcw,
           CS.stock_aeb,
           CS.stock_adas_frontDepartureHUD,
-          not CS.lkas_latch,
+          CS.stock_lkc_off,
           CS.stock_fcw_off,
         )
       )
