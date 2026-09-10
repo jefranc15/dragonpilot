@@ -357,13 +357,10 @@ class LongitudinalController:
     feedback_clean = feedback["fresh"] and feedback["consistent"]
     gas_override = session_enabled and CS.out.gasPressed
 
-    # Feedback remains observation only; never latch cruise/HUD/lateral state.
-    CS.hybrid_feedback_fault = False
-    CS.hybrid_feedback_fault_reason = ""
     return SessionState(control_allowed, session_enabled, gas_override, feedback, feedback_clean)
 
-  def _update_stop_guard(self, CS, frame, brake_request, moving_allowed, lead_state):
-    """Use validated camera braking or trusted closing geometry as a brake-only floor."""
+  def _update_stop_guard(self, CS, frame, planner_brake, moving_allowed, lead_state):
+    """Use validated camera braking or planner-confirmed closing geometry as a brake-only floor."""
     stock_brake_rx_frame = int(getattr(CS, "stock_acc_brake_rx_frame", -1000000))
     stock_acc_rx_frame = int(getattr(CS, "stock_acc_request_rx_frame", -1000000))
     stock_brake_fresh = 0 <= frame - stock_brake_rx_frame <= P.STOCK_FRAME_MAX_AGE
@@ -388,8 +385,10 @@ class LongitudinalController:
       and (0.0 < lead_state.distance <= P.STOP_GUARD_MAX_DISTANCE)
       and (lead_state.closing_speed >= P.STOP_GUARD_MIN_CLOSING)
     )
-    stock_brake_entry = stock_brake_context and brake_request >= P.STOP_GUARD_MIN_PID_BRAKE
-    stock_brake_guard = stock_brake_context and (stock_brake_entry or self.stop_guard_latched)
+    # A fresh, checksum-valid stock camera brake pair is already direct brake
+    # evidence. Do not veto it with the downstream longitudinal PID.
+    stock_brake_entry = stock_brake_context
+    stock_brake_guard = stock_brake_context
     predictive_stop_context = (
       moving_allowed
       and lead_state.relevant
@@ -400,7 +399,9 @@ class LongitudinalController:
       and (lead_state.ttc <= P.PREDICTIVE_MAX_TTC)
       and (lead_state.speed <= P.PREDICTIVE_MAX_LEAD_SPEED)
     )
-    predictive_stop_entry = predictive_stop_context and brake_request >= P.STOP_GUARD_MIN_PID_BRAKE
+    # The radar/model fallback is not direct actuator evidence, so require
+    # matching negative planner intent rather than the downstream PID.
+    predictive_stop_entry = predictive_stop_context and planner_brake >= P.PREDICTIVE_MIN_PLANNER_BRAKE
     if predictive_stop_entry:
       self.predictive_entry_counter = min(self.predictive_entry_counter + 1, P.PREDICTIVE_ENTRY_COUNT)
     else:
@@ -584,7 +585,7 @@ class LongitudinalController:
     )
     moving_allowed = session.allowed and (not CS.out.standstill)
     brake_request = max(0.0, -apply_accel)
-    guard = self._update_stop_guard(CS, frame, brake_request, moving_allowed, lead_state)
+    guard = self._update_stop_guard(CS, frame, plan.brake, moving_allowed, lead_state)
     sng_release_active = self._update_stop_hold(CS, frame, session, apply_accel, plan, lead_state)
     soft_releasing_hydraulic = False
     if not sng_release_active and (not self.stop_hold) and self.brake_active:
