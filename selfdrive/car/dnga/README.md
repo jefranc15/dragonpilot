@@ -24,10 +24,13 @@ The authoritative DBC is `opendbc/dnga_hev.dbc`.
 
 ## V4.2 control contract
 
-ACC/session state follows the driver's ACC MAIN, SET/RES, CANCEL, brake pedal,
-and openpilot engagement. Driver accelerator override suspends openpilot
-longitudinal actuation while preserving the ACC session. HEV feedback cannot
-clear or latch the cruise session and cannot change LKAS/HUD engagement state.
+ACC/session presentation follows openpilot engagement plus the CarState
+ACC MAIN/SET/RES latch. CANCEL and the brake pedal normally clear that latch in
+CarState; the controller-level cancel/pedal/gas gates can suspend actuation
+without being allowed to rewrite the 0x273 session on their own. Driver
+accelerator override therefore preserves the visible ACC session. HEV feedback
+cannot clear or latch the cruise session and cannot change LKAS/HUD engagement
+state.
 
 Normal 0x273 mode follows the stock-observed V3.3 state table:
 
