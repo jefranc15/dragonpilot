@@ -13,8 +13,7 @@ HYBRID_BRAKE_REQUEST_CLEAR_MIN = -100  # 0x275 word 0; active is ~-500..
 HYBRID_FRICTION_CLEAR_MAX = 0  # 0x08C byte 2 stock handoff value
 # The asynchronously sampled passive stock capture reached 354.7 and 92
 # respectively during short driver-brake transitions. These are gross-
-# plausibility limits, not precision estimates; sign voting below remains the
-# propulsion/brake conflict guard.
+# plausibility limits used only to reject obviously inconsistent feedback.
 HYBRID_ACTUAL_12A_MAX_ERROR = 400  # actual - (73/6)*0x12A
 HYBRID_12A_125_MAX_ERROR = 100
 
@@ -112,9 +111,7 @@ def hybrid_feedback_snapshot(car_state, frame):
   torque_125 = int(getattr(car_state, "hybrid_torque_raw_125", 0))
   friction = int(getattr(car_state, "hybrid_friction_raw_08c", 0))
 
-  # 73/6 (12.1667) is the integer-ratio fit used by the Panda hook too.
-  # Keeping one ratio on both sides prevents a controller/Panda boundary
-  # disagreement at high raw torque values.
+  # 73/6 (12.1667) is the fit observed between 0x2C9 and 0x12A.
   actual_12a_error = abs((torque_actual * 6 - torque_12a * 73) / 6.0)
   duplicate_error = abs(torque_12a - torque_125)
   consistent = actual_12a_error <= HYBRID_ACTUAL_12A_MAX_ERROR and duplicate_error <= HYBRID_12A_125_MAX_ERROR
