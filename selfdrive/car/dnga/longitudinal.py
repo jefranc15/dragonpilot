@@ -157,10 +157,8 @@ class PropulsionState:
   departing_lead: bool = False
   distant_nonclosing_lead: bool = False
   lead_nonblocking: bool = False
-  release_freeze: bool = False
   release_lead: bool = False
   engagement_guard: bool = False
-  accel_arm_ready: bool = False
   ramp_ready: bool = False
   blocked: bool = False
   accel: float = 0.0
@@ -209,9 +207,7 @@ class LongitudinalController:
     self.sng_release_count = 0
     self.lead_counter = 0
     self.brake_reentry_frame = frame
-    self.propulsion_block_until_frame = frame
     self.speed_offset = 0.0
-    self.neutral_dwell_until_frame = frame
     self.release_counter = 0
     self.lead_accel_counter = 0
     self.lead_loss_counter = 0
@@ -226,9 +222,7 @@ class LongitudinalController:
     self.low_speed_guard_until_frame = frame
     self.stopped_lead_counter = 0
     self.hold_resume_counter = 0
-    self.release_freeze_until_frame = frame
     self.release_lead_until_frame = frame
-    self.target_slope_unlock_frame = frame
     self.overshoot_counter = 0
     self.overshoot_block_until_frame = frame
     self.filtered_aego = a_ego
@@ -464,7 +458,6 @@ class LongitudinalController:
           self.sng_armed = False
           self.sng_release_count = 0
           self.release_lead_until_frame = frame
-          self.release_freeze_until_frame = frame
         else:
           self.sng_release_count = P.SNG_RELEASE_COUNT
           self._start_staged_release(frame)
@@ -862,7 +855,6 @@ class LongitudinalController:
       self.handoff_pending = True
       self.handoff_ready_counter = 0
       self.overshoot_block_until_frame = frame + P.OVERSHOOT_BLOCK_FRAMES
-      self.target_slope_unlock_frame = max(self.target_slope_unlock_frame, frame + P.TARGET_SLOPE_UNLOCK_FRAMES)
       self.release_lead_until_frame = max(self.release_lead_until_frame, frame + P.RELEASE_LEAD_HOLD_FRAMES)
       self.overshoot_counter = 0
       if lead_state.stopped and CS.out.vEgo <= P.CREEP_GUARD_MAX_EGO:
