@@ -1,9 +1,9 @@
 """Read-only DNGA hybrid/brake feedback decoding.
 
 The engineering names and units of these fields are not yet Techstream-
-validated. The supervisor uses only sign, freshness, cross-channel agreement,
-and stock-observed transition envelopes.  Nothing in this module transmits a
-CAN message.
+validated. Longitudinal control uses these read-only observations only to
+confirm the physical brake-to-propulsion handoff. Nothing in this module
+transmits a CAN message or owns ACC, HUD, LKA, or cruise-session state.
 """
 
 HYBRID_FEEDBACK_MAX_AGE_FRAMES = 25  # 0.25 s at the 100 Hz car loop
@@ -71,7 +71,7 @@ def decode_hybrid_feedback_frame(addr, dat):
 
 
 def initialize_hybrid_feedback_state(car_state):
-  """Initialize the dynamic CarState attributes consumed by the longitudinal supervisor."""
+  """Initialize the dynamic CarState attributes consumed by the longitudinal observer."""
   car_state.hybrid_brake_request_raw_275 = 0
   car_state.hybrid_torque_request_raw_275 = 0
   car_state.hybrid_torque_actual_raw_2c9 = 0
