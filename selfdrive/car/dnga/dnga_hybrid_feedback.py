@@ -7,8 +7,6 @@ transmits a CAN message or owns ACC, HUD, LKA, or cruise-session state.
 """
 
 HYBRID_FEEDBACK_MAX_AGE_FRAMES = 25  # 0.25 s at the 100 Hz car loop
-HYBRID_TORQUE_POSITIVE_RAW = 80  # 0x275/0x2C9 common raw scale
-HYBRID_TORQUE_POSITIVE_11BIT = 5  # 0x12A/0x125 signed-11 scale
 HYBRID_TORQUE_RELEASE_MIN_RAW = -100  # strong negative torque has faded
 HYBRID_TORQUE_RELEASE_MIN_11BIT = -8
 HYBRID_BRAKE_REQUEST_CLEAR_MIN = -100  # 0x275 word 0; active is ~-500..
@@ -120,12 +118,6 @@ def hybrid_feedback_snapshot(car_state, frame):
   actual_12a_error = abs((torque_actual * 6 - torque_12a * 73) / 6.0)
   duplicate_error = abs(torque_12a - torque_125)
   consistent = actual_12a_error <= HYBRID_ACTUAL_12A_MAX_ERROR and duplicate_error <= HYBRID_12A_125_MAX_ERROR
-  positive_vote = (
-    torque_request > HYBRID_TORQUE_POSITIVE_RAW
-    and torque_actual > HYBRID_TORQUE_POSITIVE_RAW
-    and torque_12a > HYBRID_TORQUE_POSITIVE_11BIT
-    and torque_125 > HYBRID_TORQUE_POSITIVE_11BIT
-  )
   brakes_clear = brake_request >= HYBRID_BRAKE_REQUEST_CLEAR_MIN and friction <= HYBRID_FRICTION_CLEAR_MAX
   torque_ramp_ready = (
     torque_request >= HYBRID_TORQUE_RELEASE_MIN_RAW
@@ -140,7 +132,6 @@ def hybrid_feedback_snapshot(car_state, frame):
     "consistent": bool(consistent),
     "brakes_clear": bool(brakes_clear),
     "torque_ramp_ready": bool(torque_ramp_ready),
-    "positive_vote": bool(positive_vote),
     "brake_request": brake_request,
     "torque_request": torque_request,
     "torque_actual": torque_actual,
