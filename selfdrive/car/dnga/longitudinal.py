@@ -238,7 +238,7 @@ class LongitudinalController:
     self.release_lead_until_frame = max(self.release_lead_until_frame, frame + P.RELEASE_LEAD_HOLD_FRAMES)
     self.speed_offset = min(0.0, self.speed_offset)
 
-  def _clear_hydraulic(self, frame, reentry=True, propulsion_dwell=True):
+  def _clear_hydraulic(self, frame, reentry=True):
     self.apply_brake = 0.0
     self.brake_target = 0.0
     self.brake_active = False
@@ -348,7 +348,7 @@ class LongitudinalController:
       trusted_stopped_lead,
     )
 
-  def _update_session(self, enabled, CS, frame, pcm_cancel_cmd, engagement_edge):
+  def _update_session(self, enabled, CS, pcm_cancel_cmd):
     # ACC session/HUD state is independent of 0x275-family feedback.
     # Driver gas suspends actuation but keeps the visible SET session alive.
     session_enabled = enabled and CS.out.cruiseState.enabled and (not pcm_cancel_cmd) and (not CS.out.brakePressed)
@@ -454,7 +454,7 @@ class LongitudinalController:
       if hold_safety_exit or hold_resume:
         self.stop_hold = False
         self.hold_resume_counter = 0
-        self._clear_hydraulic(frame, reentry=False, propulsion_dwell=False)
+        self._clear_hydraulic(frame, reentry=False)
         if hold_safety_exit:
           self.sng_armed = False
           self.sng_release_count = 0
@@ -1079,7 +1079,7 @@ class LongitudinalController:
     self._update_messages(frame)
     plan = self._get_plan(frame, apply_accel)
     lead_state = self._update_lead(CS, frame, lead, plan)
-    session = self._update_session(enabled, CS, frame, pcm_cancel_cmd, engagement_edge)
+    session = self._update_session(enabled, CS, pcm_cancel_cmd)
     brake = self._update_hydraulic(CS, frame, session, apply_accel, plan, lead_state)
     self._encode_brake(CS, session.enabled, brake)
     return self._update_propulsion(CS, frame, session, apply_accel, plan, lead_state, brake)
