@@ -152,11 +152,10 @@ class LongitudinalParams:
   STOP_GUARD_MAX_SPEED = 8.0
   STOP_GUARD_MAX_DISTANCE = 20.0
   STOP_GUARD_MIN_CLOSING = 0.2
-  # The validated stock-camera pair already proves brake intent. Do not let a
-  # temporarily positive downstream PID command veto entry into that brake-only
-  # path. Predictive fallback is tightened below because it now shares this gate.
-  STOP_GUARD_MIN_PID_BRAKE = 0.0
+  # A validated stock-camera pair is direct brake evidence. The geometry-only
+  # fallback instead requires matching negative planner intent.
   STOP_GUARD_MIN_STOCK_BRAKE = 0.08
+  PREDICTIVE_MIN_PLANNER_BRAKE = 0.05
   PREDICTIVE_MIN_CLOSING = 0.7
   PREDICTIVE_MAX_TTC = 15.0
   PREDICTIVE_MAX_LEAD_SPEED = 5.5
