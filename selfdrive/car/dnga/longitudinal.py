@@ -1085,6 +1085,16 @@ class LongitudinalController:
     plan = self._get_plan(frame, apply_accel)
     lead_state = self._update_lead(CS, frame, lead, plan)
     session = self._update_session(enabled, CS, pcm_cancel_cmd)
+    # If a new engagement begins while the HEV is visibly still braking or
+    # carrying strong negative torque, treat that as a handoff too. This gates
+    # only positive target buildup; the ACC session remains enabled.
+    if (
+      engagement_edge
+      and session.feedback_clean
+      and ((not session.feedback["brakes_clear"]) or (not session.feedback["torque_ramp_ready"]))
+    ):
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
     brake = self._update_hydraulic(CS, frame, session, apply_accel, plan, lead_state)
     self._encode_brake(CS, session.enabled, brake)
     return self._update_propulsion(CS, frame, session, apply_accel, plan, lead_state, brake)
