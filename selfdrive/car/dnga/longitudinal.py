@@ -348,7 +348,7 @@ class LongitudinalController:
       trusted_stopped_lead,
     )
 
-  def _update_session(self, enabled, CS, pcm_cancel_cmd):
+  def _update_session(self, enabled, CS, frame, pcm_cancel_cmd):
     # ACC session/HUD state is independent of 0x275-family feedback.
     # Driver gas suspends actuation but keeps the visible SET session alive.
     session_enabled = enabled and CS.out.cruiseState.enabled
@@ -1084,7 +1084,7 @@ class LongitudinalController:
     self._update_messages(frame)
     plan = self._get_plan(frame, apply_accel)
     lead_state = self._update_lead(CS, frame, lead, plan)
-    session = self._update_session(enabled, CS, pcm_cancel_cmd)
+    session = self._update_session(enabled, CS, frame, pcm_cancel_cmd)
     # If a new engagement begins while the HEV is visibly still braking or
     # carrying strong negative torque, treat that as a handoff too. This gates
     # only positive target buildup; the ACC session remains enabled.
