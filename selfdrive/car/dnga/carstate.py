@@ -22,8 +22,6 @@ class CarState(CarStateBase):
 
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
-    # SET/RES release provides the explicit longitudinal fault rearm edge.
-    self.acc_rearm_edge = False
     self.prev_distance_btn = False
     # Local enum used by dngacan/carcontroller:
     #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
@@ -173,11 +171,6 @@ class CarState(CarStateBase):
 
     minus_button = bool(cp.vl["PCM_BUTTONS"]["SET_MINUS"])
     plus_button = bool(cp.vl["PCM_BUTTONS"]["RES_PLUS"])
-
-    # SET/RES release provides the explicit longitudinal fault rearm edge.
-    self.acc_rearm_edge = bool(
-      (self.is_plus_btn_latch and not plus_button) or (self.is_minus_btn_latch and not minus_button)
-    )
 
     if self.is_cruise_latch:
       cur_time = time()
