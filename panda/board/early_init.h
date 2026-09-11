@@ -5,6 +5,7 @@
 
 extern void *g_pfnVectors;
 extern uint32_t enter_bootloader_mode;
+extern uint32_t f413_enter_bootloader_mode;
 
 void jump_to_bootloader(void) {
   // do enter bootloader
@@ -34,11 +35,10 @@ void early_initialization(void) {
   // addresses, so a shared bootstub can accept either without changing either
   // application's RAM/stack layout.
 #if defined(BOOTSTUB) && defined(STM32F4)
-  volatile uint32_t * const f413_handoff = (volatile uint32_t *)0x2003FFFCU;
-  if ((*f413_handoff == ENTER_SOFTLOADER_MAGIC) ||
-      (*f413_handoff == ENTER_BOOTLOADER_MAGIC)) {
-    enter_bootloader_mode = *f413_handoff;
-    *f413_handoff = 0U;
+  if ((f413_enter_bootloader_mode == ENTER_SOFTLOADER_MAGIC) ||
+      (f413_enter_bootloader_mode == ENTER_BOOTLOADER_MAGIC)) {
+    enter_bootloader_mode = f413_enter_bootloader_mode;
+    f413_enter_bootloader_mode = 0U;
   }
 #endif
 
