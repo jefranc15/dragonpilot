@@ -34,6 +34,7 @@ ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
 enter_bootloader_mode = 0x2001FFFC;
+f413_enter_bootloader_mode = 0x2003FFFC; /* LG G8/F413 handoff compatibility */
 _estack = 0x2001FFFC;    /* end of 128K RAM on AHB bus*/
 _app_start = 0x08004000; /* Reserve Sector 0(16K) for bootloader */
 
