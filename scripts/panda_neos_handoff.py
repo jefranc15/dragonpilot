@@ -8,7 +8,9 @@ import usb1
 
 
 FOREIGN_VID = 0x3801
+LOCAL_VID = 0xBBAA
 PANDA_APP_PID = 0xDDCC
+PANDA_BOOTSTUB_PID = 0xDDEE
 STM32_DFU_VID = 0x0483
 STM32_DFU_PID = 0xDF11
 
@@ -163,20 +165,39 @@ def main():
   log("Panda NEOS handoff service started")
 
   armed = True
-  while True:
-    foreign = usb_present(FOREIGN_VID, PANDA_APP_PID)
+  all_absent_since = None
 
-    if foreign and armed:
+  while True:
+    foreign_app = usb_present(FOREIGN_VID, PANDA_APP_PID)
+
+    any_panda = (
+      foreign_app or
+      usb_present(FOREIGN_VID, PANDA_BOOTSTUB_PID) or
+      usb_present(LOCAL_VID, PANDA_APP_PID) or
+      usb_present(LOCAL_VID, PANDA_BOOTSTUB_PID) or
+      usb_present(STM32_DFU_VID, STM32_DFU_PID)
+    )
+
+    if foreign_app and armed:
       armed = False
+      all_absent_since = None
       try:
         handoff_once()
       except Exception as e:
         log("handoff error: %r" % (e,))
 
-    # Re-arm only after the foreign application has disappeared. This prevents
-    # the old endless 3801 -> reset -> 3801 loop.
-    if not foreign:
-      armed = True
+    # A reset/re-enumeration can make USB disappear briefly. Do not treat that
+    # as a new attachment. Re-arm only after every Panda/DFU identity has been
+    # continuously absent for three seconds, which corresponds to a real
+    # unplug/replug in normal use.
+    if any_panda:
+      all_absent_since = None
+    else:
+      if all_absent_since is None:
+        all_absent_since = time.monotonic()
+      elif (not armed) and ((time.monotonic() - all_absent_since) >= 3.0):
+        armed = True
+        log("Panda fully absent for 3s; handoff service re-armed")
 
     time.sleep(0.50)
 
