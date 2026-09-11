@@ -28,6 +28,20 @@ void early_initialization(void) {
   // Init register and interrupt tables
   init_registers();
 
+  // Black Panda cross-host compatibility:
+  // Dragonpilot/NEOS F4 uses 0x2001FFFC for the boot handoff word, while the
+  // LG G8 F413 application uses 0x2003FFFC. The physical F413 has both
+  // addresses, so a shared bootstub can accept either without changing either
+  // application's RAM/stack layout.
+#if defined(BOOTSTUB) && defined(STM32F4)
+  volatile uint32_t * const f413_handoff = (volatile uint32_t *)0x2003FFFCU;
+  if ((*f413_handoff == ENTER_SOFTLOADER_MAGIC) ||
+      (*f413_handoff == ENTER_BOOTLOADER_MAGIC)) {
+    enter_bootloader_mode = *f413_handoff;
+    *f413_handoff = 0U;
+  }
+#endif
+
   // after it's been in the bootloader, things are initted differently, so we reset
   if ((enter_bootloader_mode != BOOT_NORMAL) &&
       (enter_bootloader_mode != ENTER_BOOTLOADER_MAGIC) &&
