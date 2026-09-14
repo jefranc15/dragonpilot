@@ -49,6 +49,25 @@ temporarily positive downstream PID. The geometry-only fallback requires a
 trusted closing lead plus matching negative planner intent. V4.1's stronger
 0.24 final-crawl floor is retained for stop completion.
 
+## V4.3 curve and set-speed corrections
+
+The software DNGA cruise latch now sets `CarParams.pcmCruise = True`. This does
+not hand longitudinal actuation back to the stock PCM; openpilot longitudinal
+control remains enabled. It tells `controlsd` that `carState.cruiseState.speed`
+is the authoritative setpoint. The cluster SET speed and planner `vCruise`
+therefore remain the same value during short and long SET/RES presses.
+
+No-lead negative 0x273 targets remain opt-in. V4.3 allows them only when:
+
+- `longitudinalPlanSource == turn`, using a bounded 1.4 s lookahead from the
+  vision-turn acceleration trajectory; or
+- the selected planner source is normal cruise and actual speed is above the
+  user SET speed.
+
+Curve anticipation uses 60% of the most negative acceleration in the first
+~1.4 s of the plan and caps it at -0.35 m/s². It uses only the normal 0x273
+below-vEgo HEV/coast path; curve-only hydraulic braking is still disabled.
+
 ## HEV feedback scope
 
 The HEV observer is used only at a deceleration-to-propulsion boundary. A prior
