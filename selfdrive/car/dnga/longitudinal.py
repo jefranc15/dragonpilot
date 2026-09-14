@@ -660,14 +660,9 @@ class LongitudinalController:
           low_demand = False
         else:
           low_demand = (
-            (not plan.curve_active and plan.brake < P.CURVE_BRAKE_RELEASE)
-            or (
-              plan.curve_active
-              and (
-                plan.brake < P.CURVE_BRAKE_RELEASE
-                or curve_speed_error <= P.CURVE_SPEED_ERROR_RELEASE
-              )
-            )
+            (not plan.curve_active)
+            or plan.brake < P.CURVE_BRAKE_RELEASE
+            or curve_speed_error <= P.CURVE_SPEED_ERROR_RELEASE
           )
       else:
         handoff_candidate = (
