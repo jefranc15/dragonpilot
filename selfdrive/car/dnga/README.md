@@ -67,8 +67,16 @@ No-lead negative 0x273 targets remain opt-in. V4.3 allows them only when:
   user SET speed.
 
 Curve anticipation uses 60% of the most negative acceleration in the first
-~1.4 s of the plan and caps it at -0.35 m/s². It uses only the normal 0x273
-below-vEgo HEV/coast path; curve-only hydraulic braking is still disabled.
+~1.4 s of the plan and caps it at -0.35 m/s². V4.3 logs showed that the normal
+0x273 below-vEgo path was limited to roughly 1 km/h below actual speed at
+50-60 km/h and produced almost no measured deceleration. V4.3.1 therefore
+restores the historical curve-only 0x21 supplement, but only when the planner
+is explicitly source=turn, no lead is controlling, speed is above 5.6 m/s,
+the car is at least 0.70 m/s above visionTurnSpeed, and the anticipated turn
+request is at least 0.12 m/s². Entry requires three 20 Hz confirmations.
+Authority uses the old bounded curve envelope (about 0.17 at 8 m/s, 0.23 at
+15 m/s, and no more than 0.30 m/s²). It cannot arm stop-and-go and releases
+when the turn source clears or the vehicle reaches the turn target.
 
 ## HEV feedback scope
 
