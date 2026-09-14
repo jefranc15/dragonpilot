@@ -22,6 +22,8 @@ class CarState(CarStateBase):
 
     self.is_plus_btn_latch = False
     self.is_minus_btn_latch = False
+    self.plus_long_step = False
+    self.minus_long_step = False
     self.prev_distance_btn = False
     # Local enum used by dngacan/carcontroller:
     #   0 = 1 bar/aggressive, 1 = 2 bars/standard, 2 = 3 bars/relaxed.
@@ -179,25 +181,30 @@ class CarState(CarStateBase):
 
       if self.is_plus_btn_latch != plus_button:
         if not plus_button:
-          if cur_time - self.rising_edge_since < 1:
+          if (not self.plus_long_step) and cur_time - self.rising_edge_since < 1:
             self.cruise_speed += CV.KPH_TO_MS
+          self.plus_long_step = False
         else:
           self.rising_edge_since = cur_time
           self.dt = 0
+          self.plus_long_step = False
       elif plus_button:
         while self.dt >= SEC_HOLD_TO_STEP_SPEED:
           kph = self.cruise_speed * CV.MS_TO_KPH
           kph += 5 - (kph % 5)
           self.cruise_speed = kph * CV.KPH_TO_MS
           self.dt -= SEC_HOLD_TO_STEP_SPEED
+          self.plus_long_step = True
 
       if self.is_minus_btn_latch != minus_button:
         if not minus_button:
-          if cur_time - self.rising_edge_since < 1:
+          if (not self.minus_long_step) and cur_time - self.rising_edge_since < 1:
             self.cruise_speed -= CV.KPH_TO_MS
+          self.minus_long_step = False
         else:
           self.rising_edge_since = cur_time
           self.dt = 0
+          self.minus_long_step = False
       elif minus_button:
         while self.dt >= SEC_HOLD_TO_STEP_SPEED:
           kph = self.cruise_speed * CV.MS_TO_KPH
@@ -205,6 +212,7 @@ class CarState(CarStateBase):
           kph = max(30, kph)
           self.cruise_speed = kph * CV.KPH_TO_MS
           self.dt -= SEC_HOLD_TO_STEP_SPEED
+          self.minus_long_step = True
 
     if self.acc_main_latch and not self.is_cruise_latch:
       if self.is_plus_btn_latch and not plus_button:
