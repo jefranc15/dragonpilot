@@ -55,7 +55,9 @@ The software DNGA cruise latch now sets `CarParams.pcmCruise = True`. This does
 not hand longitudinal actuation back to the stock PCM; openpilot longitudinal
 control remains enabled. It tells `controlsd` that `carState.cruiseState.speed`
 is the authoritative setpoint. The cluster SET speed and planner `vCruise`
-therefore remain the same value during short and long SET/RES presses.
+therefore remain the same value during short and long SET/RES presses. A press
+that already produced a held 5 km/h step no longer adds an extra 1 km/h on
+release.
 
 No-lead negative 0x273 targets remain opt-in. V4.3 allows them only when:
 
