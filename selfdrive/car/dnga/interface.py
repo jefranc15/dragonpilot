@@ -109,6 +109,12 @@ class CarInterface(CarInterfaceBase):
     # Software longitudinal control owns the accelerator and brake commands.
     ret.openpilotLongitudinalControl = True
 
+    # CarState owns the software ACC MAIN/SET/RES latch and publishes the exact
+    # set speed shown on the cluster. Treat that software cruise state as the
+    # authoritative PCM-style setpoint so controlsd mirrors cruiseState.speed
+    # instead of maintaining a second unsynchronised virtual vCruise.
+    ret.pcmCruise = True
+
     if candidate == CAR.YARISCROSSHEV:
       ret.wheelbase = 2.620
       ret.steerRatio = 17.00
