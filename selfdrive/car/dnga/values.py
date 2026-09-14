@@ -189,11 +189,19 @@ class LongitudinalParams:
   DECEL_OFFSET_STEP_UP = 0.08
 
   # Vision-turn anticipation. The 0.8.13 plan has 17 accel points through
-  # 2.5 s; the first 13 cover ~1.4 s. Use the most negative value in that
-  # short horizon at reduced weight, with no curve-only hydraulic braking.
+  # 2.5 s; the first 13 cover ~1.4 s. Bring a bounded portion of that future
+  # decel forward into 0x273, then add a narrowly scoped curve-only 0x21
+  # supplement when the planner is explicitly source=turn and the car remains
+  # meaningfully above the vision turn speed.
   CURVE_LOOKAHEAD_COUNT = 13
   CURVE_LOOKAHEAD_WEIGHT = 0.60
   CURVE_MAX_DECEL = 0.35
+  CURVE_HYDRAULIC_MIN_SPEED = 5.6
+  CURVE_SPEED_ERROR_ENTRY = 0.70
+  CURVE_SPEED_ERROR_RELEASE = 0.20
+  CURVE_BRAKE_ENTRY = 0.12
+  CURVE_BRAKE_RELEASE = 0.06
+  CURVE_ENTRY_COUNT = 3
 
   # Allow a user-commanded lower cruise setpoint to use the same smooth
   # below-vEgo 0x273 path once the car is meaningfully above that set speed.
