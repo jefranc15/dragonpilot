@@ -18,6 +18,7 @@ class PlanState:
   source: str
   curve_active: bool
   turn_speed: float
+  lead_lookahead_brake: float
 
 
 @dataclass
@@ -120,6 +121,20 @@ def curve_brake_cap(v_ego):
   return float(interp(v_ego, [5.6, 8.0, 15.0, 25.0, 35.0], [0.12, 0.17, 0.23, 0.28, 0.30]))
 
 
+def stop_guard_brake_cap(v_ego):
+  """Smooth low-speed stop-guard ceiling.
+
+  The previous 0.87 direct ceiling let a late predictive guard jump far above
+  both the planner and the stock camera request. Keep enough authority to
+  finish a stop while avoiding that catch-up spike.
+  """
+  return float(interp(
+    v_ego,
+    [0.0, 0.5, 1.0, 1.5, 2.5, 4.0, 6.0, 8.0],
+    [0.24, 0.25, 0.28, 0.32, 0.40, 0.46, 0.52, 0.56],
+  ))
+
+
 def powertrain_decel_cap(v_ego):
   """Maximum below-vEgo 0x273 offset used for smooth lead deceleration."""
   return float(interp(v_ego, [0.0, 4.0, 15.0, 25.0, 35.0], [0.08, 0.15, 0.28, 0.40, 0.45]))
@@ -185,6 +200,7 @@ class LongitudinalController:
     self.plan_accel = 0.0
     self.plan_accel_next = 0.0
     self.plan_curve_accel = 0.0
+    self.plan_lead_accel = 0.0
     self.plan_turn_speed = 0.0
     self.plan_has_lead = False
     self.plan_frame = -1000000
@@ -241,6 +257,8 @@ class LongitudinalController:
     self.release_pump_until_frame = frame
     self.predictive_entry_counter = 0
     self.stop_guard_latched = False
+    self.near_set_coast_counter = 0
+    self.near_set_coast_active = False
 
   def _start_staged_release(self, frame):
     """Start stock-observed release framing and feedback-gated propulsion handoff."""
@@ -281,11 +299,13 @@ class LongitudinalController:
             self.plan_accel = float(plan_accels[0])
             self.plan_accel_next = float(plan_accels[1]) if len(plan_accels) > 1 else self.plan_accel
 
-            # Curve control needs a little anticipation. On this 0.8.13 plan
-            # the first 13 points span about 1.4 s, which is early enough to
-            # see the planned turn decel without using the full 2.5 s horizon.
+            # The first 13 points span about 1.4 s on this 0.8.13 plan.
+            # Preserve separate bounded lookaheads for curves and lead braking
+            # so neither path needs to wait for accels[0:2] to turn negative.
             curve_count = min(len(plan_accels), P.CURVE_LOOKAHEAD_COUNT)
             self.plan_curve_accel = min(float(plan_accels[i]) for i in range(curve_count))
+            lead_count = min(len(plan_accels), P.LEAD_LOOKAHEAD_COUNT)
+            self.plan_lead_accel = min(float(plan_accels[i]) for i in range(lead_count))
           self.plan_frame = frame
       except Exception:
         pass
@@ -313,6 +333,20 @@ class LongitudinalController:
     planner_reports_lead = plan_fresh and (self.plan_has_lead or planner_source_lead)
     planner_accel_request = 0.7 * self.plan_accel + 0.3 * self.plan_accel_next if plan_fresh else apply_accel
 
+    # Keep lead anticipation separate from the immediate planner command. It is
+    # used only for earlier smooth target shaping / normal hydraulic entry, not
+    # for urgent or emergency classification.
+    lead_lookahead_brake = 0.0
+    if planner_reports_lead:
+      anticipated_lead_accel = min(
+        planner_accel_request,
+        self.plan_lead_accel * P.LEAD_LOOKAHEAD_WEIGHT,
+      )
+      lead_lookahead_brake = min(
+        P.LEAD_LOOKAHEAD_MAX_BRAKE,
+        max(0.0, -anticipated_lead_accel),
+      )
+
     # VisionTurnController often knows about the corner before accels[0:2]
     # become negative. When it is the selected no-lead source, bring forward a
     # bounded fraction of the most negative ~1.4 s plan point. V4.3.1 may
@@ -335,6 +369,7 @@ class LongitudinalController:
       self.plan_source if plan_fresh else "",
       curve_active,
       self.plan_turn_speed if plan_fresh else 0.0,
+      lead_lookahead_brake,
     )
 
   def _update_lead(self, CS, frame, lead, plan):
@@ -427,11 +462,10 @@ class LongitudinalController:
     stock_brake_context = (
       moving_allowed
       and stock_brake_pair_valid
-      and lead_state.relevant
       and lead_state.status
-      and (CS.out.vEgo <= P.STOP_GUARD_MAX_SPEED)
-      and (0.0 < lead_state.distance <= P.STOP_GUARD_MAX_DISTANCE)
-      and (lead_state.closing_speed >= P.STOP_GUARD_MIN_CLOSING)
+      and (lead_state.visible or lead_state.relevant)
+      and (CS.out.vEgo <= P.STOCK_BRAKE_MAX_SPEED)
+      and (0.0 < lead_state.distance <= P.STOCK_BRAKE_MAX_DISTANCE)
     )
     # A fresh, checksum-valid stock camera brake pair is already direct brake
     # evidence. Do not veto it with the downstream longitudinal PID.
@@ -575,6 +609,7 @@ class LongitudinalController:
     distance_val = int(clip(getattr(CS, "op_distance_val", 1), 0, 2))
     lead_entry_planner, lead_normal_cap, _ = distance_profile(distance_val)
     lead_hydraulic_entry = lead_entry_planner
+    lead_brake_request = max(plan.brake, plan.lead_lookahead_brake)
     if CS.out.vEgo >= P.HIGHWAY_MIN_SPEED:
       lead_hydraulic_entry = max(lead_entry_planner, progressive_hydraulic_entry(CS.out.vEgo))
     emergency_closing = (
@@ -615,6 +650,13 @@ class LongitudinalController:
       and (not CS.out.standstill)
       and (P.CREEP_GUARD_MIN_EGO < CS.out.vEgo <= P.CREEP_GUARD_MAX_EGO)
       and (lead_state.closing_speed >= P.CREEP_GUARD_MIN_CLOSING)
+    )
+    creep_hold_continuation = (
+      self.sng_armed
+      and lead_state.stopped
+      and (not CS.out.standstill)
+      and (CS.out.vEgo <= P.CREEP_GUARD_MAX_EGO)
+      and (0.0 < lead_state.distance <= P.STOP_HOLD_MAX_DISTANCE)
     )
     early_highway_entry = (
       lead_state.relevant
@@ -689,9 +731,11 @@ class LongitudinalController:
           self.sng_armed = False
           safety_hard_release = True
         hold_brake_to_standstill = (
-          self.sng_armed
-          and (stopped_lead_approach or stop_completion_active)
-          and (CS.out.vEgo <= P.SNG_ARM_SPEED)
+          (
+            self.sng_armed
+            and (stopped_lead_approach or stop_completion_active or creep_hold_continuation)
+            and (CS.out.vEgo <= P.SNG_ARM_SPEED)
+          )
           or guard.completion
         )
         low_demand = (
@@ -724,10 +768,15 @@ class LongitudinalController:
       )
       lead_entry = (
         moving_allowed
-        and (lead_state.relevant or creep_stop_guard)
-        and (plan.brake >= lead_hydraulic_entry or stopped_lead_reentry or early_highway_entry or guard.entry)
+        and (lead_state.relevant or creep_stop_guard or guard.stock_active)
+        and (
+          lead_brake_request >= lead_hydraulic_entry
+          or stopped_lead_reentry
+          or early_highway_entry
+          or guard.entry
+        )
         and (CS.out.vEgo > (P.CREEP_GUARD_MIN_EGO if creep_stop_guard else P.MIN_ENTRY_SPEED))
-        and (frame > self.block_brake_until_frame or creep_stop_guard)
+        and (frame > self.block_brake_until_frame or creep_stop_guard or guard.stock_active)
         and (frame >= self.brake_reentry_frame or stopped_lead_reentry or guard.entry)
       )
       urgent_entry = (
@@ -807,8 +856,17 @@ class LongitudinalController:
           self.urgent_brake = True
         if self.curve_brake_active:
           requested_cap = curve_brake_cap(CS.out.vEgo)
+        elif guard.stock_active:
+          # Follow the validated factory request closely instead of letting
+          # predictive geometry jump straight to the old 0.87 ceiling.
+          requested_cap = min(
+            P.STOP_BRAKE_MAX,
+            max(lead_normal_cap, guard.stock_brake + P.STOCK_BRAKE_CAP_MARGIN),
+          )
         elif guard.active:
-          requested_cap = P.STOP_BRAKE_MAX
+          requested_cap = stop_guard_brake_cap(CS.out.vEgo)
+          if emergency_closing:
+            requested_cap = max(requested_cap, P.URGENT_BRAKE_MAX)
         elif self.urgent_brake:
           requested_cap = P.URGENT_BRAKE_MAX
         elif CS.out.vEgo >= P.HIGHWAY_MIN_SPEED:
@@ -821,16 +879,27 @@ class LongitudinalController:
           else min(requested_cap, low_speed_brake_cap(CS.out.vEgo), high_speed_brake_cap(CS.out.vEgo))
         )
         if guard.active:
-          # The stop guard has its own measured envelope; do not double-cap it.
-          brake_cap = P.STOP_BRAKE_MAX
+          # Guard authority already has its own speed/stock-request ceiling.
+          brake_cap = requested_cap
         elif self.stop_guard_latched:
           brake_cap = max(brake_cap, min(P.STOP_BRAKE_MAX, self.apply_brake))
-        crawl_floor_active = self.brake_active and (creep_stop_guard or stop_completion_active or guard.completion)
+        crawl_floor_active = self.brake_active and (
+          creep_stop_guard or creep_hold_continuation or stop_completion_active or guard.completion
+        )
         brake_floor = max(P.CREEP_BRAKE_FLOOR, P.STOP_COMPLETION_BRAKE_FLOOR) if crawl_floor_active else P.BRAKE_MIN
         if crawl_floor_active:
           brake_cap = max(brake_cap, brake_floor)
         if plan.fresh:
           target_request = plan.brake
+          if (
+            (not self.curve_brake_active)
+            and lead_state.relevant
+            and plan.lead_lookahead_brake > target_request
+          ):
+            target_request = max(
+              target_request,
+              min(P.LEAD_LOOKAHEAD_TARGET_CAP, plan.lead_lookahead_brake),
+            )
           if (not self.curve_brake_active) and apply_accel < 0.0:
             pid_extra = max(0.0, brake_request - plan.brake)
             target_request += min(P.PID_BRAKE_ALLOWANCE, P.PID_BRAKE_BLEND * pid_extra)
@@ -1123,6 +1192,38 @@ class LongitudinalController:
       brake.magnitude,
     )
 
+  def _update_near_set_coast(self, CS, plan, lead_state, apply_accel):
+    """Hold a tiny coast bias when planner/PID disagree near the cruise setpoint."""
+    speed_error = CS.out.cruiseState.speed - CS.out.vEgo
+    context = (
+      plan.fresh
+      and plan.source == "cruise"
+      and (not plan.has_lead)
+      and (not lead_state.relevant)
+      and (CS.out.vEgo >= P.NEAR_SET_COAST_MIN_SPEED)
+      and (abs(speed_error) <= P.NEAR_SET_COAST_BAND)
+      and (plan.accel <= P.NEAR_SET_COAST_PLAN_MAX)
+    )
+
+    if self.near_set_coast_active:
+      if (
+        (not context)
+        or apply_accel >= P.NEAR_SET_COAST_PID_RELEASE
+      ):
+        self.near_set_coast_active = False
+        self.near_set_coast_counter = 0
+    else:
+      if context and apply_accel <= P.NEAR_SET_COAST_PID_ENTRY:
+        self.near_set_coast_counter = min(self.near_set_coast_counter + 1, P.NEAR_SET_COAST_COUNT)
+      else:
+        self.near_set_coast_counter = 0
+      if self.near_set_coast_counter >= P.NEAR_SET_COAST_COUNT:
+        self.near_set_coast_active = True
+        self.near_set_coast_counter = 0
+
+    return self.near_set_coast_active
+
+
   def _update_propulsion(self, CS, frame, session, apply_accel, plan, lead_state, brake):
     propulsion = PropulsionState()
     propulsion.release_lead = session.enabled and frame < self.release_lead_until_frame
@@ -1154,14 +1255,22 @@ class LongitudinalController:
       and CS.out.vEgo > CS.out.cruiseState.speed + P.CRUISE_DECEL_MARGIN
     )
 
+    near_set_coast = self._update_near_set_coast(CS, plan, lead_state, apply_accel)
+
     if plan.fresh:
-      if plan.accel < 0.0 and (lead_state.relevant or plan.curve_active or set_speed_decel):
+      if near_set_coast:
+        propulsion.accel = -P.NEAR_SET_COAST_DECEL
+      elif lead_state.relevant and plan.lead_lookahead_brake > P.DECEL_DEADBAND:
+        propulsion.accel = -max(plan.brake, plan.lead_lookahead_brake)
+      elif plan.accel < 0.0 and (lead_state.relevant or plan.curve_active or set_speed_decel):
         propulsion.accel = plan.accel
       elif plan.accel > 0.0 and apply_accel > 0.0:
         propulsion.accel = min(plan.accel + 0.08, 0.75 * plan.accel + 0.25 * apply_accel)
       else:
         propulsion.accel = 0.0
     else:
+      self.near_set_coast_active = False
+      self.near_set_coast_counter = 0
       propulsion.accel = apply_accel if apply_accel >= 0.0 else 0.0
 
     self._update_handoff_feedback(session, propulsion, brake)
