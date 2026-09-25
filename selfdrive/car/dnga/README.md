@@ -78,6 +78,37 @@ Authority uses the old bounded curve envelope (about 0.17 at 8 m/s, 0.23 at
 15 m/s, and no more than 0.30 m/s²). It cannot arm stop-and-go and releases
 when the turn source clears or the vehicle reaches the turn target.
 
+## V4.3.2 lead-brake and low-speed cruise corrections
+
+September 25 V4.3.1 logs showed three separate issues that are corrected here
+without changing the 0x275-family observer:
+
+- Lead braking could start late because DNGA waited for the first planner accel
+  points to become negative even when the same MPC trajectory already scheduled
+  meaningful decel about 1.4 s ahead. V4.3.2 adds a bounded lead-only lookahead
+  for smooth 0x273 target shaping and normal hydraulic entry. It does not feed
+  urgent/emergency classification.
+- A checksum-valid stock-camera 0x271+0x273 brake pair is accepted as direct
+  brake evidence earlier (up to 20 m/s and 45 m) and no longer needs an extra
+  radar closing-speed threshold. That direct OEM request may bypass the initial
+  brake-entry settle timer.
+- Predictive stop-guard authority no longer jumps directly to the old 0.87
+  ceiling. Stock-backed braking follows the validated stock request with a
+  small margin; geometry-only stop guarding uses a speed-dependent ceiling.
+- Once the stopped-lead creep path arms, it stays latched through the 8-12 m
+  crawl window instead of releasing for about 0.5 s and immediately re-entering
+  0x31 when the planner briefly asks for positive acceleration.
+- Near the user SET speed, if the cruise planner is only slightly positive while
+  the downstream speed PID persistently asks for decel, a three-sample
+  hysteresis applies a tiny coast-biased 0x273 target. This addresses the
+  repeatable low-speed HEV engine-rev fault without assigning any new authority
+  to 0x275 feedback.
+
+The near-set coast path is intentionally small (-0.08 m/s² synthetic decel
+before the existing powertrain target cap) and exits when PID asks for positive
+acceleration again. The normal 0x275 brake-to-propulsion readiness gate still
+applies on the return to propulsion.
+
 ## HEV feedback scope
 
 The HEV observer is used only at a deceleration-to-propulsion boundary. A prior
