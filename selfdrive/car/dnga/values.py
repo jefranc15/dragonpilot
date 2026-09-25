@@ -65,6 +65,15 @@ class LongitudinalParams:
   URGENT_ENTRY_COUNT = 2
   LEAD_TRUST_COUNT = 10
   URGENT_LEAD_COUNT = 3
+
+  # The 0.8.13 MPC often schedules lead decel well before accels[0:2] become
+  # negative. Use a short, bounded lookahead to begin the smooth 0x273 decel
+  # path earlier and to admit hydraulic entry earlier without changing urgent
+  # or emergency classification.
+  LEAD_LOOKAHEAD_COUNT = 13
+  LEAD_LOOKAHEAD_WEIGHT = 0.75
+  LEAD_LOOKAHEAD_MAX_BRAKE = 0.30
+  LEAD_LOOKAHEAD_TARGET_CAP = 0.20
   MIN_ENTRY_SPEED = 0.5
   PLAN_MAX_AGE_FRAMES = 50
   RADAR_MAX_AGE_FRAMES = 50
@@ -151,10 +160,15 @@ class LongitudinalParams:
   STOCK_FRAME_MAX_AGE = 25
   STOP_GUARD_MAX_SPEED = 8.0
   STOP_GUARD_MAX_DISTANCE = 20.0
-  STOP_GUARD_MIN_CLOSING = 0.2
-  # A validated stock-camera pair is direct brake evidence. The geometry-only
-  # fallback instead requires matching negative planner intent.
+
+  # A checksum-valid stock 0x271+0x273 pair is direct brake evidence, so allow
+  # it to start the normal lead brake path earlier and do not require an
+  # additional closing-speed threshold. Predictive geometry still keeps its
+  # own stricter closing/TTC checks below.
+  STOCK_BRAKE_MAX_SPEED = 20.0
+  STOCK_BRAKE_MAX_DISTANCE = 45.0
   STOP_GUARD_MIN_STOCK_BRAKE = 0.08
+  STOCK_BRAKE_CAP_MARGIN = 0.05
   PREDICTIVE_MIN_PLANNER_BRAKE = 0.05
   PREDICTIVE_MIN_CLOSING = 0.7
   PREDICTIVE_MAX_TTC = 15.0
@@ -164,7 +178,7 @@ class LongitudinalParams:
   PREDICTIVE_REACTION_TIME = 0.35
   PREDICTIVE_INITIAL_BRAKE = 0.16
   STOCK_INITIAL_BRAKE_MAX = 0.36
-  STOP_BRAKE_MAX = 0.87
+  STOP_BRAKE_MAX = 0.87  # absolute decode/safety ceiling, not the normal stop-guard cap
   STOP_BRAKE_FILTER_UP = 0.3
   STOP_BRAKE_STEP_UP = 0.05
   PUMP_05_THRESHOLD = 0.75
@@ -206,6 +220,20 @@ class LongitudinalParams:
   # Allow a user-commanded lower cruise setpoint to use the same smooth
   # below-vEgo 0x273 path once the car is meaningfully above that set speed.
   CRUISE_DECEL_MARGIN = 0.30
+
+  # Near the selected cruise speed, the higher-level planner can still ask for
+  # a tiny positive acceleration while the downstream speed PID is already
+  # asking to slow. On the HEV this disagreement can hold the powertrain in an
+  # unwanted propulsion/rev state. Confirm that mismatch briefly, then bias the
+  # normal 0x273 target a few tenths of km/h below vEgo until PID agrees again.
+  NEAR_SET_COAST_MIN_SPEED = 5.0
+  NEAR_SET_COAST_BAND = 0.60
+  NEAR_SET_COAST_PID_ENTRY = -0.05
+  NEAR_SET_COAST_PID_RELEASE = 0.02
+  NEAR_SET_COAST_PLAN_MAX = 0.12
+  NEAR_SET_COAST_COUNT = 3
+  NEAR_SET_COAST_DECEL = 0.08
+
   ACCEL_ENTRY = 0.05
   ACCEL_CAP = 0.25
   ACCEL_OFFSET_STEP_UP = 0.004
