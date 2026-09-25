@@ -863,6 +863,8 @@ class LongitudinalController:
             P.STOP_BRAKE_MAX,
             max(lead_normal_cap, guard.stock_brake + P.STOCK_BRAKE_CAP_MARGIN),
           )
+          if emergency_closing:
+            requested_cap = max(requested_cap, P.URGENT_BRAKE_MAX)
         elif guard.active:
           requested_cap = stop_guard_brake_cap(CS.out.vEgo)
           if emergency_closing:
