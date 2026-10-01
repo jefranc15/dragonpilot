@@ -91,10 +91,12 @@ def read_thermal(thermal_config):
   # Preserve the physical ambient/PA reading in thermalZones for rlog analysis.
   cpu_max_temp = max(cpu_temps) if len(cpu_temps) > 0 else ambient_temp
   dat.deviceState.ambientTempC = cpu_max_temp
-  dat.deviceState.thermalZones = [
-    {"name": "ambientRaw", "temp": ambient_temp},
-    {"name": "cpuMax", "temp": cpu_max_temp},
-  ]
+
+  thermal_zones = dat.deviceState.init("thermalZones", 2)
+  thermal_zones[0].name = "ambientRaw"
+  thermal_zones[0].temp = ambient_temp
+  thermal_zones[1].name = "cpuMax"
+  thermal_zones[1].temp = cpu_max_temp
 
   return dat
 
