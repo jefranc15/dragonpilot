@@ -71,11 +71,31 @@ def read_tz(x):
 
 def read_thermal(thermal_config):
   dat = messaging.new_message('deviceState')
-  dat.deviceState.cpuTempC = [read_tz(z) / thermal_config.cpu[1] for z in thermal_config.cpu[0]]
-  dat.deviceState.gpuTempC = [read_tz(z) / thermal_config.gpu[1] for z in thermal_config.gpu[0]]
-  dat.deviceState.memoryTempC = read_tz(thermal_config.mem[0]) / thermal_config.mem[1]
-  dat.deviceState.ambientTempC = read_tz(thermal_config.ambient[0]) / thermal_config.ambient[1]
-  dat.deviceState.pmicTempC = [read_tz(z) / thermal_config.pmic[1] for z in thermal_config.pmic[0]]
+
+  cpu_temps = [read_tz(z) / thermal_config.cpu[1] for z in thermal_config.cpu[0]]
+  gpu_temps = [read_tz(z) / thermal_config.gpu[1] for z in thermal_config.gpu[0]]
+  memory_temp = read_tz(thermal_config.mem[0]) / thermal_config.mem[1]
+  ambient_temp = read_tz(thermal_config.ambient[0]) / thermal_config.ambient[1]
+  pmic_temps = [read_tz(z) / thermal_config.pmic[1] for z in thermal_config.pmic[0]]
+
+  dat.deviceState.cpuTempC = cpu_temps
+  dat.deviceState.gpuTempC = gpu_temps
+  dat.deviceState.memoryTempC = memory_temp
+  dat.deviceState.pmicTempC = pmic_temps
+
+  # The legacy EON UI displays ambientTempC. On the OnePlus 3T that field is
+  # pa_therm0, which can lag the CPU by tens of degrees under sustained onroad
+  # load. Show the hottest configured CPU sensor instead so the number on screen
+  # reflects the component that actually approaches the thermal limits.
+  #
+  # Preserve the physical ambient/PA reading in thermalZones for rlog analysis.
+  cpu_max_temp = max(cpu_temps) if len(cpu_temps) > 0 else ambient_temp
+  dat.deviceState.ambientTempC = cpu_max_temp
+  dat.deviceState.thermalZones = [
+    {"name": "ambientRaw", "temp": ambient_temp},
+    {"name": "cpuMax", "temp": cpu_max_temp},
+  ]
+
   return dat
 
 
