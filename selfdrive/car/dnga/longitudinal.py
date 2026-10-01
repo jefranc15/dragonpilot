@@ -333,9 +333,10 @@ class LongitudinalController:
     planner_reports_lead = plan_fresh and (self.plan_has_lead or planner_source_lead)
     planner_accel_request = 0.7 * self.plan_accel + 0.3 * self.plan_accel_next if plan_fresh else apply_accel
 
-    # Keep lead anticipation separate from the immediate planner command. It is
-    # used only for earlier smooth target shaping / normal hydraulic entry, not
-    # for urgent or emergency classification.
+    # Keep lead anticipation separate from the immediate planner command.
+    # It may help hydraulic entry only after _update_lead confirms real closing;
+    # it must never replace present positive propulsion intent. It is also not
+    # used for urgent or emergency classification.
     lead_lookahead_brake = 0.0
     if planner_reports_lead:
       anticipated_lead_accel = min(
@@ -466,6 +467,7 @@ class LongitudinalController:
       and (lead_state.visible or lead_state.relevant)
       and (CS.out.vEgo <= P.STOCK_BRAKE_MAX_SPEED)
       and (0.0 < lead_state.distance <= P.STOCK_BRAKE_MAX_DISTANCE)
+      and (lead_state.relative_speed <= P.STOCK_BRAKE_MAX_OPENING)
     )
     # A fresh, checksum-valid stock camera brake pair is already direct brake
     # evidence. Do not veto it with the downstream longitudinal PID.
@@ -609,7 +611,14 @@ class LongitudinalController:
     distance_val = int(clip(getattr(CS, "op_distance_val", 1), 0, 2))
     lead_entry_planner, lead_normal_cap, _ = distance_profile(distance_val)
     lead_hydraulic_entry = lead_entry_planner
-    lead_brake_request = max(plan.brake, plan.lead_lookahead_brake)
+    lead_lookahead_active = (
+      lead_state.relevant
+      and lead_state.status
+      and (lead_state.closing_speed >= P.LEAD_LOOKAHEAD_MIN_CLOSING)
+      and (lead_state.ttc <= P.LEAD_LOOKAHEAD_MAX_TTC)
+    )
+    lead_anticipation_brake = plan.lead_lookahead_brake if lead_lookahead_active else 0.0
+    lead_brake_request = max(plan.brake, lead_anticipation_brake)
     if CS.out.vEgo >= P.HIGHWAY_MIN_SPEED:
       lead_hydraulic_entry = max(lead_entry_planner, progressive_hydraulic_entry(CS.out.vEgo))
     emergency_closing = (
@@ -895,12 +904,12 @@ class LongitudinalController:
           target_request = plan.brake
           if (
             (not self.curve_brake_active)
-            and lead_state.relevant
-            and plan.lead_lookahead_brake > target_request
+            and lead_lookahead_active
+            and lead_anticipation_brake > target_request
           ):
             target_request = max(
               target_request,
-              min(P.LEAD_LOOKAHEAD_TARGET_CAP, plan.lead_lookahead_brake),
+              min(P.LEAD_LOOKAHEAD_TARGET_CAP, lead_anticipation_brake),
             )
           if (not self.curve_brake_active) and apply_accel < 0.0:
             pid_extra = max(0.0, brake_request - plan.brake)
@@ -1262,8 +1271,6 @@ class LongitudinalController:
     if plan.fresh:
       if near_set_coast:
         propulsion.accel = -P.NEAR_SET_COAST_DECEL
-      elif lead_state.relevant and plan.lead_lookahead_brake > P.DECEL_DEADBAND:
-        propulsion.accel = -max(plan.brake, plan.lead_lookahead_brake)
       elif plan.accel < 0.0 and (lead_state.relevant or plan.curve_active or set_speed_decel):
         propulsion.accel = plan.accel
       elif plan.accel > 0.0 and apply_accel > 0.0:
