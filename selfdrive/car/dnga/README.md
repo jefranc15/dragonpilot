@@ -109,6 +109,31 @@ before the existing powertrain target cap) and exits when PID asks for positive
 acceleration again. The normal 0x275 brake-to-propulsion readiness gate still
 applies on the return to propulsion.
 
+## V4.3.4 stock-brake continuity corrections
+
+October 2 V4.3.3 logs showed that CAN scheduling and the 1.2 s release-pump
+framing were healthy, but the hydraulic arbitration could still create repeated
+brake-release-brake cycles while the factory camera remained continuously in
+0x21/DECEL.
+
+- An active stock/predictive brake guard now cancels the positive-PID hydraulic
+  handoff and resets its release counter. The guard therefore wins while valid
+  factory braking evidence remains present.
+- Soft hydraulic release stays at BRAKE_MIN until RELEASE_CONFIRM_COUNT is
+  satisfied, then moves atomically into staged release. This removes the
+  one-frame READY/pump=0 hole seen between 0x21 and the -0.4 release-pump phase.
+- During staged release, 0x273 remains DECEL while the read-only HEV observer
+  still reports a pending physical brake-to-propulsion handoff. Once the
+  0x275-family feedback is clean, the normal READY/ACCEL mode may resume.
+- Direct stock braking authority is admitted out to 70 m and up to +1.0 m/s
+  apparent lead opening. Once active, a +1.5 m/s continuation threshold and
+  three-sample debounce prevent brief radar vRel noise from dropping the guard.
+  The stock camera leaving the validated BRAKING/DECEL pair still releases the
+  guard immediately.
+
+The existing HANDOFF_COUNT, RELEASE_CONFIRM_COUNT, RELEASE_PUMP_FRAMES,
+REENTRY_BLOCK_FRAMES, HYBRID_READY_COUNT, and brake scaling are unchanged.
+
 ## HEV feedback scope
 
 The HEV observer is used only at a deceleration-to-propulsion boundary. A prior
