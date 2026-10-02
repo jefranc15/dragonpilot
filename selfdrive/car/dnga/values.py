@@ -168,8 +168,10 @@ class LongitudinalParams:
   # additional closing-speed threshold. Predictive geometry still keeps its
   # own stricter closing/TTC checks below.
   STOCK_BRAKE_MAX_SPEED = 20.0
-  STOCK_BRAKE_MAX_DISTANCE = 45.0
-  STOCK_BRAKE_MAX_OPENING = 0.30
+  STOCK_BRAKE_MAX_DISTANCE = 70.0
+  STOCK_BRAKE_MAX_OPENING = 1.00
+  STOCK_BRAKE_RELEASE_MAX_OPENING = 1.50
+  STOCK_BRAKE_RELEASE_COUNT = 3
   STOP_GUARD_MIN_STOCK_BRAKE = 0.08
   STOCK_BRAKE_CAP_MARGIN = 0.05
   PREDICTIVE_MIN_PLANNER_BRAKE = 0.05
