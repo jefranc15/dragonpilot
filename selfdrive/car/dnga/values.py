@@ -173,6 +173,18 @@ class LongitudinalParams:
   STOCK_BRAKE_RELEASE_MAX_OPENING = 1.50
   STOCK_BRAKE_RELEASE_COUNT = 3
   STOP_GUARD_MIN_STOCK_BRAKE = 0.08
+
+  # The validated OEM pair confirms that braking should continue, but normal
+  # following should stay smoother than the factory controller. Use a small
+  # fraction of the OEM magnitude plus closing-energy geometry, with a mild
+  # initial entry and slower rise. Urgent/critical paths retain faster authority.
+  STOCK_SMOOTH_INITIAL_BRAKE = 0.08
+  STOCK_SMOOTH_ENTRY_MAX = 0.12
+  STOCK_SMOOTH_FOLLOW_RATIO = 0.40
+  STOCK_SMOOTH_MAX_BRAKE = 0.36
+  STOCK_SMOOTH_FILTER_UP = 0.12
+  STOCK_SMOOTH_STEP_UP = 0.012
+  STOCK_URGENT_STEP_UP = 0.03
   STOCK_BRAKE_CAP_MARGIN = 0.05
   PREDICTIVE_MIN_PLANNER_BRAKE = 0.05
   PREDICTIVE_MIN_CLOSING = 0.7
