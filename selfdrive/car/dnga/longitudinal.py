@@ -257,6 +257,8 @@ class LongitudinalController:
     self.release_pump_until_frame = frame
     self.predictive_entry_counter = 0
     self.stop_guard_latched = False
+    self.stock_brake_guard_active = False
+    self.stock_brake_release_counter = 0
     self.near_set_coast_counter = 0
     self.near_set_coast_active = False
 
@@ -460,19 +462,46 @@ class LongitudinalController:
       and (not bool(getattr(CS, "stock_acc_request_is_accel", False)))
       and (stock_brake_request >= P.STOP_GUARD_MIN_STOCK_BRAKE)
     )
-    stock_brake_context = (
+    stock_brake_base_context = (
       moving_allowed
       and stock_brake_pair_valid
       and lead_state.status
       and (lead_state.visible or lead_state.relevant)
       and (CS.out.vEgo <= P.STOCK_BRAKE_MAX_SPEED)
       and (0.0 < lead_state.distance <= P.STOCK_BRAKE_MAX_DISTANCE)
+    )
+    stock_brake_entry_context = (
+      stock_brake_base_context
       and (lead_state.relative_speed <= P.STOCK_BRAKE_MAX_OPENING)
     )
-    # A fresh, checksum-valid stock camera brake pair is already direct brake
-    # evidence. Do not veto it with the downstream longitudinal PID.
-    stock_brake_entry = stock_brake_context
-    stock_brake_guard = stock_brake_context
+    stock_brake_continue_context = (
+      stock_brake_base_context
+      and (lead_state.relative_speed <= P.STOCK_BRAKE_RELEASE_MAX_OPENING)
+    )
+
+    # A fresh, checksum-valid stock 0x271+0x273 brake pair is direct brake
+    # evidence. Once admitted, keep authority through brief radar vRel noise;
+    # the stock camera returning out of BRAKING/DECEL releases immediately.
+    if not moving_allowed or not stock_brake_pair_valid:
+      self.stock_brake_guard_active = False
+      self.stock_brake_release_counter = 0
+    elif self.stock_brake_guard_active:
+      if stock_brake_continue_context:
+        self.stock_brake_release_counter = 0
+      else:
+        self.stock_brake_release_counter = min(
+          self.stock_brake_release_counter + 1,
+          P.STOCK_BRAKE_RELEASE_COUNT,
+        )
+        if self.stock_brake_release_counter >= P.STOCK_BRAKE_RELEASE_COUNT:
+          self.stock_brake_guard_active = False
+          self.stock_brake_release_counter = 0
+    elif stock_brake_entry_context:
+      self.stock_brake_guard_active = True
+      self.stock_brake_release_counter = 0
+
+    stock_brake_entry = self.stock_brake_guard_active
+    stock_brake_guard = self.stock_brake_guard_active
     predictive_stop_context = (
       moving_allowed
       and lead_state.relevant
@@ -716,8 +745,14 @@ class LongitudinalController:
             or curve_speed_error <= P.CURVE_SPEED_ERROR_RELEASE
           )
       else:
+        if guard.active:
+          self.handoff_counter = 0
+          self.handoff_active = False
+          self.release_counter = 0
+
         handoff_candidate = (
-          CS.out.vEgo >= P.HIGHWAY_MIN_SPEED
+          (not guard.active)
+          and CS.out.vEgo >= P.HIGHWAY_MIN_SPEED
           and plan.fresh
           and lead_state.relevant
           and (not urgent_closing)
@@ -764,7 +799,7 @@ class LongitudinalController:
         soft_releasing_hydraulic = True
         self.brake_target = P.BRAKE_MIN
         release_step = P.HANDOFF_STEP_DOWN if self.handoff_active else P.BRAKE_STEP_DOWN
-        self.apply_brake = max(0.0, self.apply_brake - release_step)
+        self.apply_brake = max(P.BRAKE_MIN, self.apply_brake - release_step)
         if self.release_counter >= P.RELEASE_CONFIRM_COUNT and self.apply_brake <= P.BRAKE_MIN:
           self.sng_armed = False
           self._start_staged_release(frame)
@@ -1170,7 +1205,11 @@ class LongitudinalController:
     elif brake.state == BrakeState.HOLD:
       acc_cmd_is_accel = True
       acc_cmd_is_decel = True
-    elif brake.state in (BrakeState.BRAKING, BrakeState.CREEPING) or brake.sng_release:
+    elif (
+      brake.state in (BrakeState.BRAKING, BrakeState.CREEPING)
+      or brake.sng_release
+      or (brake.release_pump and self.handoff_pending)
+    ):
       acc_cmd_is_accel = False
       acc_cmd_is_decel = True
     else:
