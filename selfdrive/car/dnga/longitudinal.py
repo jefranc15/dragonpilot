@@ -163,6 +163,21 @@ def relative_stop_request(v_ego, d_rel, closing_speed):
   return float(clip(relative_decel, P.PREDICTIVE_INITIAL_BRAKE, P.STOP_BRAKE_MAX))
 
 
+def smooth_stock_brake_request(v_ego, d_rel, closing_speed, stock_brake):
+  """Use the OEM brake request as evidence/reference, not a copied magnitude."""
+  usable_distance = max(
+    0.5,
+    d_rel - P.PREDICTIVE_STANDSTILL_GAP - P.PREDICTIVE_REACTION_TIME * max(0.0, v_ego),
+  )
+  relative_decel = closing_speed * closing_speed / (2.0 * usable_distance)
+  geometry_request = float(clip(relative_decel, 0.0, P.STOCK_SMOOTH_MAX_BRAKE))
+  reference_request = P.STOCK_SMOOTH_FOLLOW_RATIO * stock_brake
+  return float(min(
+    stock_brake,
+    max(P.STOCK_SMOOTH_INITIAL_BRAKE, reference_request, geometry_request),
+  ))
+
+
 @dataclass
 class SessionState:
   allowed: bool
@@ -526,7 +541,17 @@ class LongitudinalController:
       if predictive_stop_context
       else 0.0
     )
-    stop_guard_request = stock_brake_request if stock_brake_guard else relative_brake_request
+    stock_smooth_request = (
+      smooth_stock_brake_request(
+        CS.out.vEgo,
+        lead_state.distance,
+        lead_state.closing_speed,
+        stock_brake_request,
+      )
+      if stock_brake_guard
+      else 0.0
+    )
+    stop_guard_request = stock_smooth_request if stock_brake_guard else relative_brake_request
     stop_completion_guard = (
       self.stop_guard_latched
       and lead_state.relevant
@@ -606,7 +631,14 @@ class LongitudinalController:
     return sng_release_active
 
   def _apply_brake_target(self, raw_target_brake, brake_floor, brake_cap, emergency_closing, critical_closing, guard):
-    if guard.active:
+    if guard.stock_active:
+      if emergency_closing or critical_closing or self.urgent_brake:
+        filter_up = P.EMERGENCY_BRAKE_FILTER_UP
+        step_up = P.STOCK_URGENT_STEP_UP
+      else:
+        filter_up = P.STOCK_SMOOTH_FILTER_UP
+        step_up = P.STOCK_SMOOTH_STEP_UP
+    elif guard.active:
       filter_up = P.STOP_BRAKE_FILTER_UP
       step_up = P.STOP_BRAKE_STEP_UP
     elif emergency_closing:
@@ -632,7 +664,7 @@ class LongitudinalController:
     ):
       rate_limited_brake = min(rate_limited_brake, max(brake_floor, self.apply_brake - P.DECEL_GOVERNOR_STEP_DOWN))
     if guard.active:
-      bounded_guard_floor = min(guard.request, self.apply_brake + P.STOP_BRAKE_STEP_UP)
+      bounded_guard_floor = min(guard.request, self.apply_brake + step_up)
       rate_limited_brake = max(rate_limited_brake, bounded_guard_floor)
     self.apply_brake = float(clip(rate_limited_brake, brake_floor, brake_cap))
 
@@ -864,7 +896,10 @@ class LongitudinalController:
         self.urgent_brake = bool(urgent_confirmed)
         entry_brake = P.BRAKE_MIN
         if guard.stock_active:
-          entry_brake = min(P.STOCK_INITIAL_BRAKE_MAX, max(P.BRAKE_MIN, guard.stock_brake))
+          if urgent_closing or critical_closing:
+            entry_brake = min(P.STOCK_INITIAL_BRAKE_MAX, max(P.BRAKE_MIN, guard.request))
+          else:
+            entry_brake = min(P.STOCK_SMOOTH_ENTRY_MAX, max(P.BRAKE_MIN, guard.request))
         elif guard.predictive_confirmed:
           entry_brake = P.PREDICTIVE_INITIAL_BRAKE
         self.apply_brake = entry_brake
@@ -953,6 +988,8 @@ class LongitudinalController:
           target_request = brake_request
         if guard.active:
           target_request = max(target_request, guard.request, P.CREEP_BRAKE_FLOOR if guard.completion else P.BRAKE_MIN)
+        if guard.stock_active and (emergency_closing or critical_closing):
+          target_request = max(target_request, min(guard.stock_brake, P.URGENT_BRAKE_MAX))
         raw_target_brake = float(clip(target_request * speed_scale, brake_floor, brake_cap))
         self._apply_brake_target(raw_target_brake, brake_floor, brake_cap, emergency_closing, critical_closing, guard)
       if (
