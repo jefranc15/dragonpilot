@@ -130,6 +130,14 @@ brake-release-brake cycles while the factory camera remained continuously in
   three-sample debounce prevent brief radar vRel noise from dropping the guard.
   The stock camera leaving the validated BRAKING/DECEL pair still releases the
   guard immediately.
+- The validated stock pair is now brake evidence rather than a copied brake
+  magnitude during normal following. Stock-backed entry is capped at 0.12,
+  then rises at 0.012 per 20 Hz update toward the larger of a 40% OEM-reference
+  request and a closing-energy request. This preserves earlier/smoother braking
+  instead of reproducing the factory controller's late, hard ramp.
+- If closing becomes urgent/critical, the rise rate increases to 0.03 per update
+  and the validated OEM request may contribute up to the existing 0.45 urgent
+  ceiling. The normal smooth path therefore does not reduce emergency authority.
 
 The existing HANDOFF_COUNT, RELEASE_CONFIRM_COUNT, RELEASE_PUMP_FRAMES,
 REENTRY_BLOCK_FRAMES, HYBRID_READY_COUNT, and brake scaling are unchanged.
