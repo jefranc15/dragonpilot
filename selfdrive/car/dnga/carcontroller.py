@@ -8,7 +8,7 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_hud,
 )
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal_atomic_release import LongitudinalController
+from selfdrive.car.dnga.longitudinal_op_only import LongitudinalController
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams, LongitudinalParams as P
 
 try:
@@ -52,39 +52,23 @@ class CarController:
     self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
-    # Final command-layer brake/propulsion interlock. This is independent of
-    # planner/radar arbitration so no valid physical/OEM braking transition can
-    # leave 0x273 advertising positive propulsion.
+    # Final command-layer brake/propulsion interlock. Normal stock ACC requests
+    # are logging-only in V4.3.6; only physical HEV feedback can hold this lock.
     self.brake_propulsion_lock = False
     self.brake_propulsion_ready_count = 0
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Prevent any positive 0x273 command across a real braking handoff.
+    """Prevent positive 0x273 propulsion while the HEV is physically braking.
 
-    The stock camera pair is read only evidence from bus 2. Hybrid feedback is
-    also read only. Neither source owns the ACC session; they only gate the
-    physical brake-to-propulsion transition.
+    Stock ACC 0x271/0x273 remains decoded for logging/comparison but has no
+    normal longitudinal authority in V4.3.6. The physical hybrid feedback is
+    the only external brake-to-propulsion gate at this final command layer.
     """
-    stock_brake_rx_frame = int(getattr(CS, "stock_acc_brake_rx_frame", -1000000))
-    stock_cmd_rx_frame = int(getattr(CS, "stock_acc_request_rx_frame", -1000000))
-    stock_brake_fresh = 0 <= frame - stock_brake_rx_frame <= P.STOCK_FRAME_MAX_AGE
-    stock_cmd_fresh = 0 <= frame - stock_cmd_rx_frame <= P.STOCK_FRAME_MAX_AGE
-    stock_braking = (
-      stock_brake_fresh
-      and stock_cmd_fresh
-      and int(getattr(CS, "stock_acc_brake_state", 0)) == BrakeState.BRAKING
-      and bool(getattr(CS, "stock_acc_request_enabled", False))
-      and bool(getattr(CS, "stock_acc_request_lead", False))
-      and bool(getattr(CS, "stock_acc_request_is_decel", False))
-      and (not bool(getattr(CS, "stock_acc_request_is_accel", False)))
-      and float(getattr(CS, "stock_acc_brake_decel", 0.0)) >= P.STOP_GUARD_MIN_STOCK_BRAKE
-    )
-
     feedback = hybrid_feedback_snapshot(CS, frame)
     feedback_clean = feedback["fresh"] and feedback["consistent"]
     physical_braking = feedback_clean and (not feedback["brakes_clear"])
 
-    if stock_braking or physical_braking:
+    if physical_braking:
       self.brake_propulsion_lock = True
       self.brake_propulsion_ready_count = 0
     elif self.brake_propulsion_lock:
