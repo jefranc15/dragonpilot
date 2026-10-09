@@ -7,7 +7,7 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_brake_command,
   dnga_create_hud,
 )
-from selfdrive.car.dnga.longitudinal import LongitudinalController
+from selfdrive.car.dnga.longitudinal_atomic_release import LongitudinalController
 from selfdrive.car.dnga.values import DBC, CarControllerParams
 
 try:
