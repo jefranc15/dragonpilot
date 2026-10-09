@@ -167,8 +167,11 @@ class LongitudinalParams:
   # it to start the normal lead brake path earlier and do not require an
   # additional closing-speed threshold. Predictive geometry still keeps its
   # own stricter closing/TTC checks below.
-  STOCK_BRAKE_MAX_SPEED = 20.0
-  STOCK_BRAKE_MAX_DISTANCE = 70.0
+  # A validated camera 0x271+0x273 brake pair remains useful at highway
+  # speed. V4.3.4's 20 m/s ceiling caused OP to keep ACCEL asserted while the
+  # factory camera and the HEV were already braking above ~72 km/h.
+  STOCK_BRAKE_MAX_SPEED = 40.0
+  STOCK_BRAKE_MAX_DISTANCE = 120.0
   STOCK_BRAKE_MAX_OPENING = 1.00
   STOCK_BRAKE_RELEASE_MAX_OPENING = 1.50
   STOCK_BRAKE_RELEASE_COUNT = 3
