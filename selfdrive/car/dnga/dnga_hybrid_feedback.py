@@ -9,6 +9,14 @@ transmits a CAN message or owns ACC, HUD, LKA, or cruise-session state.
 HYBRID_FEEDBACK_MAX_AGE_FRAMES = 25  # 0.25 s at the 100 Hz car loop
 HYBRID_TORQUE_RELEASE_MIN_RAW = -100  # strong negative torque has faded
 HYBRID_TORQUE_RELEASE_MIN_11BIT = -8
+# Brake-to-propulsion handoff must also pass through a near-neutral window.
+# October 9 V4.3.4 logs showed launch/rev events with 0x275/0x2C9 around
+# +1500..+2000 and 0x12A/0x125 around +120..+160 while braking released.
+# Normal no-brake operation in the same drive was usually below ~+425 raw
+# and ~+35 on the 11-bit pair. A +1000/+82 ceiling leaves substantial margin
+# while still rejecting the abnormal +1500..+2000 preloaded-propulsion state.
+HYBRID_TORQUE_RELEASE_MAX_RAW = 1000
+HYBRID_TORQUE_RELEASE_MAX_11BIT = 82
 HYBRID_BRAKE_REQUEST_CLEAR_MIN = -100  # 0x275 word 0; active is ~-500..
 HYBRID_FRICTION_CLEAR_MAX = 0  # 0x08C byte 2 stock handoff value
 # The asynchronously sampled passive stock capture reached 354.7 and 92
@@ -117,10 +125,10 @@ def hybrid_feedback_snapshot(car_state, frame):
   consistent = actual_12a_error <= HYBRID_ACTUAL_12A_MAX_ERROR and duplicate_error <= HYBRID_12A_125_MAX_ERROR
   brakes_clear = brake_request >= HYBRID_BRAKE_REQUEST_CLEAR_MIN and friction <= HYBRID_FRICTION_CLEAR_MAX
   torque_ramp_ready = (
-    torque_request >= HYBRID_TORQUE_RELEASE_MIN_RAW
-    and torque_actual >= HYBRID_TORQUE_RELEASE_MIN_RAW
-    and torque_12a >= HYBRID_TORQUE_RELEASE_MIN_11BIT
-    and torque_125 >= HYBRID_TORQUE_RELEASE_MIN_11BIT
+    HYBRID_TORQUE_RELEASE_MIN_RAW <= torque_request <= HYBRID_TORQUE_RELEASE_MAX_RAW
+    and HYBRID_TORQUE_RELEASE_MIN_RAW <= torque_actual <= HYBRID_TORQUE_RELEASE_MAX_RAW
+    and HYBRID_TORQUE_RELEASE_MIN_11BIT <= torque_12a <= HYBRID_TORQUE_RELEASE_MAX_11BIT
+    and HYBRID_TORQUE_RELEASE_MIN_11BIT <= torque_125 <= HYBRID_TORQUE_RELEASE_MAX_11BIT
   )
 
   return {
