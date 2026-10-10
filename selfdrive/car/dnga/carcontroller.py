@@ -8,7 +8,7 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_hud,
 )
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal_op_only import LongitudinalController
+from selfdrive.car.dnga.longitudinal_hev_torque_guard import LongitudinalController
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams, LongitudinalParams as P
 
 try:
@@ -53,7 +53,8 @@ class CarController:
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
     # Final command-layer brake/propulsion interlock. Normal stock ACC requests
-    # are logging-only in V4.3.6; only physical HEV feedback can hold this lock.
+    # remain logging-only; the HEV-aware controller owns the torque-neutralized
+    # decel/release target and this layer remains defense in depth.
     self.brake_propulsion_lock = False
     self.brake_propulsion_ready_count = 0
 
@@ -61,8 +62,8 @@ class CarController:
     """Prevent positive 0x273 propulsion while the HEV is physically braking.
 
     Stock ACC 0x271/0x273 remains decoded for logging/comparison but has no
-    normal longitudinal authority in V4.3.6. The physical hybrid feedback is
-    the only external brake-to-propulsion gate at this final command layer.
+    normal longitudinal authority. Physical hybrid feedback remains the final
+    external brake-to-propulsion gate.
     """
     feedback = hybrid_feedback_snapshot(CS, frame)
     feedback_clean = feedback["fresh"] and feedback["consistent"]
