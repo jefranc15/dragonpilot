@@ -17,7 +17,7 @@ HEV_POSITIVE_TORQUE_START = 120.0
 HEV_NEGATIVE_TORQUE_START = -120.0
 HEV_RPM_REGEN_GUARD = 1800.0
 HEV_HYDRAULIC_NEUTRAL_BIAS = 0.04
-HEV_OFFSET_STEP_DOWN = 0.090
+HEV_OFFSET_STEP_DOWN = 0.100
 HEV_OFFSET_STEP_UP = 0.100
 HEV_RPM_OFFSET_STEP_UP = 0.150
 HEV_NEUTRAL_OFFSET_STEP = 0.035
@@ -26,10 +26,11 @@ HEV_NEUTRAL_OFFSET_STEP = 0.035
 # cares about positive preloaded torque; strong negative torque may release
 # friction but still cannot re-arm propulsion until this full near-neutral
 # window is satisfied.
-HEV_HANDOFF_MAX_RAW = 250.0
-HEV_HANDOFF_MAX_11BIT = 20.0
-HEV_RELEASE_POSITIVE_MAX_RAW = 250.0
-HEV_RELEASE_POSITIVE_MAX_11BIT = 20.0
+HEV_HANDOFF_MAX_RAW = 225.0
+HEV_HANDOFF_MAX_11BIT = 18.0
+HEV_RELEASE_POSITIVE_MAX_RAW = 225.0
+HEV_RELEASE_POSITIVE_MAX_11BIT = 18.0
+HEV_RELEASE_OFFSET_READY = 0.18
 HEV_RELEASE_READY_COUNT = 4
 HEV_RELEASE_GUARD_MIN_SPEED = 5.0
 
@@ -40,9 +41,9 @@ HEV_RELEASE_GUARD_MIN_SPEED = 5.0
 # and measured positive torque demands it; negative torque/RPM immediately
 # drives the target back toward neutral.
 HEV_OFFSET_MAX_BP = [0.0, 5.0, 15.0, 25.0, 35.0]
-HEV_OFFSET_MAX_V = [0.08, 0.25, 1.00, 1.60, 1.75]
+HEV_OFFSET_MAX_V = [0.08, 0.30, 1.20, 1.75, 1.90]
 HEV_POSITIVE_TORQUE_BP = [120.0, 250.0, 400.0, 600.0, 800.0, 1000.0, 1250.0, 1500.0]
-HEV_POSITIVE_OFFSET_V = [0.05, 0.12, 0.28, 0.58, 0.92, 1.28, 1.58, 1.75]
+HEV_POSITIVE_OFFSET_V = [0.05, 0.12, 0.30, 0.62, 0.98, 1.45, 1.75, 1.90]
 
 
 class LongitudinalController(OpenpilotOnlyLongitudinalController):
@@ -149,6 +150,7 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
         ))
         target_offset = -min(max_offset, max(abs(nominal_offset), positive_offset))
         step_down = HEV_OFFSET_STEP_DOWN
+        step_up = HEV_OFFSET_STEP_UP
       elif (
         negative_torque < HEV_NEGATIVE_TORQUE_START
         or brake_request < -100.0
@@ -183,7 +185,16 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
 
     release_attempt = was_brake_active and brake.release_pump and not brake.sng_release
     if release_attempt and self._soft_release_guard_context(CS, session, plan, lead_state):
-      release_ready = session.feedback_clean and self.hev_positive_release_ready(session.feedback)
+      if not session.feedback_clean:
+        # Never hold hydraulic braking on stale/inconsistent passive feedback.
+        # Fall back to the base hard/soft release behavior.
+        self.hev_release_ready_counter = 0
+        return brake
+
+      release_ready = (
+        self.hev_positive_release_ready(session.feedback)
+        and self.speed_offset >= -HEV_RELEASE_OFFSET_READY
+      )
       if release_ready:
         self.hev_release_ready_counter = min(self.hev_release_ready_counter + 1, HEV_RELEASE_READY_COUNT)
       else:
