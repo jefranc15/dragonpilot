@@ -76,7 +76,7 @@ class CarController:
       ready_candidate = (
         feedback_clean
         and feedback["brakes_clear"]
-        and feedback["torque_ramp_ready"]
+        and self.longitudinal.hev_handoff_torque_ready(feedback)
       )
       if ready_candidate:
         self.brake_propulsion_ready_count = min(
