@@ -30,7 +30,6 @@ HEV_HANDOFF_MAX_RAW = 225.0
 HEV_HANDOFF_MAX_11BIT = 18.0
 HEV_RELEASE_POSITIVE_MAX_RAW = 225.0
 HEV_RELEASE_POSITIVE_MAX_11BIT = 18.0
-HEV_RELEASE_OFFSET_READY = 0.18
 HEV_RELEASE_READY_COUNT = 4
 HEV_RELEASE_GUARD_MIN_SPEED = 5.0
 
@@ -191,10 +190,7 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
         self.hev_release_ready_counter = 0
         return brake
 
-      release_ready = (
-        self.hev_positive_release_ready(session.feedback)
-        and self.speed_offset >= -HEV_RELEASE_OFFSET_READY
-      )
+      release_ready = self.hev_positive_release_ready(session.feedback)
       if release_ready:
         self.hev_release_ready_counter = min(self.hev_release_ready_counter + 1, HEV_RELEASE_READY_COUNT)
       else:
