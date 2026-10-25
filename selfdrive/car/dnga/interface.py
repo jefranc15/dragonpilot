@@ -117,7 +117,9 @@ class CarInterface(CarInterfaceBase):
 
     if candidate == CAR.YARISCROSSHEV:
       ret.wheelbase = 2.620
-      ret.steerRatio = 17.00
+      # Fixed from repeated on-road learner convergence. V4.3.9 no longer lets
+      # locationd/paramsd overwrite this vehicle-model parameter.
+      ret.steerRatio = 18.35
       ret.centerToFront = ret.wheelbase * 0.44
       tire_stiffness_factor = 0.7933
       ret.mass = 1250.0 + STD_CARGO_KG
@@ -179,8 +181,7 @@ class CarInterface(CarInterfaceBase):
               0x275,
               0x2C9,
             ):
-              # Read-only hybrid/brake feedback. Every candidate is
-              # length/checksum validated before it can affect the supervisor.
+              # Read-only hybrid feedback retained for rlog analysis only.
               apply_hybrid_feedback_frame(self.CS, self.frame, msg.address, msg.dat)
 
             elif msg.src == 2 and msg.address == 0x271:
