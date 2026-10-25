@@ -1,14 +1,14 @@
 """DNGA V4.3.9 planner/kinematic longitudinal guard.
 
-V4.3.8 proved that the raw 0x275/0x2C9/0x12A/0x125 values are not validated
-well enough to close the longitudinal control loop around them. V4.3.9 leaves
-those channels decoded for logging only. Planner/radar intent owns braking,
-hydraulic release is never held waiting for hybrid torque, and propulsion
-re-arms only after the commanded brake/release phase is over and vehicle
-kinematics are calm.
+V4.3.8 proved that the raw torque-related 0x275/0x2C9/0x12A/0x125 values are
+not validated well enough to close the longitudinal loop around them. V4.3.9
+keeps only the brake-specific 0x275 word-0 request plus 0x08C friction as a
+physical-braking veto. Those signals can block propulsion handoff, but they
+never hold hydraulic BRAKE_MIN and never deepen the 0x273 target.
 """
 
 from common.numpy_fast import clip, interp
+from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state
 from selfdrive.car.dnga.longitudinal_op_only import LongitudinalController as OpenpilotOnlyLongitudinalController
 from selfdrive.car.dnga.values import BrakeState, CarControllerParams, LongitudinalParams as P
 
@@ -37,14 +37,22 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     return False
 
   @staticmethod
+  def _hybrid_brake_state(session):
+    # This helper intentionally inspects only 0x275 brake request and 0x08C
+    # friction. Torque-request/actual channels have no control authority.
+    return hybrid_brake_feedback_state(session.feedback)
+
+  @staticmethod
   def _kinematic_decel_cap(v_ego):
     return float(interp(v_ego, KINEMATIC_DECEL_CAP_BP, KINEMATIC_DECEL_CAP_V))
 
   def _update_handoff_feedback(self, session, propulsion, brake):
-    """Gate propulsion with commanded state + aEgo, never raw hybrid torque."""
+    """Gate propulsion with commanded state, physical brake state, and aEgo."""
+    brake_feedback_fresh, physical_braking = self._hybrid_brake_state(session)
     release_active = brake.hydraulic or brake.sng_release or brake.release_pump
     decel_commanded = (
       release_active
+      or physical_braking
       or propulsion.accel <= -P.DECEL_DEADBAND
       or self.speed_offset < -P.SPEED_OFFSET_EPS
     )
@@ -65,9 +73,14 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
       propulsion.ramp_ready = True
       return
 
+    # After any commanded braking/release, propulsion cannot re-arm until the
+    # brake-specific CAN feedback is fresh and clear. This preserves the old
+    # anti-simultaneous-regen/accel protection without consulting torque data.
     ready_candidate = (
       self.handoff_pending
       and not release_active
+      and brake_feedback_fresh
+      and not physical_braking
       and propulsion.accel > -P.DECEL_DEADBAND
       and self.speed_offset >= -P.SPEED_OFFSET_EPS
       and self.kinematic_last_a_ego <= KINEMATIC_READY_AEGO
@@ -102,6 +115,17 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
       self.kinematic_ready_counter = 0
       return
 
+    _, physical_braking = self._hybrid_brake_state(session)
+    if physical_braking and not brake.hydraulic:
+      # The HEV is still reporting regen/brake activity after our hydraulic
+      # command has ended. Hold a neutral target and DECEL framing; do not add
+      # more negative target and do not permit propulsion yet.
+      self.speed_offset = 0.0
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
+      self.kinematic_ready_counter = 0
+      return
+
     if brake.hydraulic or propulsion.accel <= -P.DECEL_DEADBAND:
       max_offset = self._kinematic_decel_cap(float(CS.out.vEgo))
       t_lookup = 0.35 + 0.07 * float(CS.out.vEgo)
@@ -130,7 +154,7 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
       self.speed_offset = 0.0
 
     # While handoff is pending, hold a neutral desired speed. Do not build a
-    # positive offset until the vehicle is no longer accelerating unexpectedly.
+    # positive offset until physical braking has cleared and the car is calm.
     if self.handoff_pending:
       self.speed_offset = 0.0
       return
@@ -143,10 +167,12 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     if not session.enabled or session.gas_override or brake.state == BrakeState.HOLD:
       return command
 
+    _, physical_braking = self._hybrid_brake_state(session)
     decel_mode = (
       brake.hydraulic
       or brake.sng_release
       or brake.release_pump
+      or physical_braking
       or self.handoff_pending
       or self.speed_offset < -P.SPEED_OFFSET_EPS
       or propulsion.accel <= -P.DECEL_DEADBAND
@@ -164,9 +190,9 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     return command
 
   def update(self, enabled, CS, frame, accel, pcm_cancel_cmd, lead):
-    # This mirrors the base update order but intentionally removes the
-    # engagement-time raw-hybrid-torque gate. The raw HEV channels are now
-    # observation-only.
+    # This mirrors the base update order while deliberately removing all
+    # torque-based handoff logic. Brake-specific 0x275/0x08C feedback remains
+    # available later in _update_handoff_feedback as a propulsion veto only.
     self.kinematic_last_a_ego = float(CS.out.aEgo)
     apply_accel = clip(accel, -3.0, 1.5)
     engagement_edge = enabled and not self.prev_enabled
