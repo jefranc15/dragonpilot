@@ -7,9 +7,8 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_brake_command,
   dnga_create_hud,
 )
-from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal_hev_torque_guard import LongitudinalController
-from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams, LongitudinalParams as P
+from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController
+from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
 
 try:
   from common.features import Features
@@ -52,61 +51,24 @@ class CarController:
     self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
-    # Final command-layer brake/propulsion interlock. Normal stock ACC requests
-    # remain logging-only; the HEV-aware controller owns the torque-neutralized
-    # decel/release target and this layer remains defense in depth.
-    self.brake_propulsion_lock = False
-    self.brake_propulsion_ready_count = 0
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Prevent positive 0x273 propulsion while the HEV is physically braking.
+    """Final command invariant using commanded state only.
 
-    Stock ACC 0x271/0x273 remains decoded for logging/comparison but has no
-    normal longitudinal authority. Physical hybrid feedback remains the final
-    external brake-to-propulsion gate.
+    V4.3.9 deliberately gives no control authority to the unvalidated raw HEV
+    torque channels. Hydraulic braking, release-pump framing, and the kinematic
+    handoff latch can never advertise ACCEL or a speed above current vEgo.
     """
-    feedback = hybrid_feedback_snapshot(CS, frame)
-    feedback_clean = feedback["fresh"] and feedback["consistent"]
-    physical_braking = feedback_clean and (not feedback["brakes_clear"])
+    del frame
 
-    if physical_braking:
-      self.brake_propulsion_lock = True
-      self.brake_propulsion_ready_count = 0
-    elif self.brake_propulsion_lock:
-      ready_candidate = (
-        feedback_clean
-        and feedback["brakes_clear"]
-        and self.longitudinal.hev_handoff_torque_ready(feedback)
-      )
-      if ready_candidate:
-        self.brake_propulsion_ready_count = min(
-          self.brake_propulsion_ready_count + 1,
-          P.HYBRID_READY_COUNT,
-        )
-      else:
-        self.brake_propulsion_ready_count = 0
-      if self.brake_propulsion_ready_count >= P.HYBRID_READY_COUNT:
-        self.brake_propulsion_lock = False
-        self.brake_propulsion_ready_count = 0
+    hydraulic = command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING)
+    release_or_handoff = command.pump < 0.0 or self.longitudinal.handoff_pending
 
-    # Hydraulic/crawl braking can never advertise ACCEL. HOLD keeps the
-    # stock-observed both-bits mode. This is a final invariant even if an
-    # upstream state machine regresses later.
-    if command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING):
+    if hydraulic or (release_or_handoff and command.brake_state != BrakeState.HOLD):
       command.is_accel = False
       command.is_decel = True
       command.speed = min(float(command.speed), float(CS.out.vEgo))
-
-    if self.brake_propulsion_lock and command.brake_state != BrakeState.HOLD:
-      command.is_accel = False
-      command.is_decel = True
-      command.speed = min(float(command.speed), float(CS.out.vEgo))
-
-      # Do not let a positive desired-speed offset survive underneath the
-      # interlock and launch the car when the physical brake finally clears.
       self.longitudinal.speed_offset = min(0.0, float(self.longitudinal.speed_offset))
-      self.longitudinal.handoff_pending = True
-      self.longitudinal.handoff_ready_counter = 0
 
     return command
 
