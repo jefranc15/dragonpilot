@@ -37,7 +37,9 @@ procs = [
   PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", enabled=not MIPI and (not PC or WEBCAM), driverview=True),
   PythonProcess("logmessaged", "selfdrive.logmessaged", persistent=True),
   PythonProcess("pandad", "selfdrive.pandad", persistent=True),
-  PythonProcess("paramsd", "selfdrive.locationd.paramsd"),
+  # DNGA uses a fixed vehicle model; non-DNGA ports are delegated back to the
+  # stock learner by static_paramsd.py.
+  PythonProcess("paramsd", "selfdrive.locationd.static_paramsd"),
   PythonProcess("plannerd", "selfdrive.controls.plannerd"),
   PythonProcess("radard", "selfdrive.controls.radard"),
   PythonProcess("thermald", "selfdrive.thermald.thermald", persistent=True),
