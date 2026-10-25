@@ -7,6 +7,7 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_brake_command,
   dnga_create_hud,
 )
+from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
 from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
 
@@ -53,18 +54,25 @@ class CarController:
     self.longitudinal = LongitudinalController()
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Final command invariant using commanded state only.
+    """Final brake/propulsion invariant.
 
-    V4.3.9 deliberately gives no control authority to the unvalidated raw HEV
-    torque channels. Hydraulic braking, release-pump framing, and the kinematic
-    handoff latch can never advertise ACCEL or a speed above current vEgo.
+    0x275 brake request plus 0x08C friction remain a hard physical-braking
+    veto. Raw torque request/actual channels have no authority here.
     """
-    del frame
+    feedback = hybrid_feedback_snapshot(CS, frame)
+    _, physical_braking = hybrid_brake_feedback_state(feedback)
 
     hydraulic = command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING)
     release_or_handoff = command.pump < 0.0 or self.longitudinal.handoff_pending
 
-    if hydraulic or (release_or_handoff and command.brake_state != BrakeState.HOLD):
+    if physical_braking:
+      # Defense in depth: even if an upstream state transition clears too early,
+      # physical regen/friction braking can never share an ACCEL command.
+      self.longitudinal.handoff_pending = True
+      self.longitudinal.handoff_ready_counter = 0
+      self.longitudinal.kinematic_ready_counter = 0
+
+    if hydraulic or physical_braking or (release_or_handoff and command.brake_state != BrakeState.HOLD):
       command.is_accel = False
       command.is_decel = True
       command.speed = min(float(command.speed), float(CS.out.vEgo))
