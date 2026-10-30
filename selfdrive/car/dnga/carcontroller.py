@@ -54,29 +54,42 @@ class CarController:
     self.longitudinal = LongitudinalController()
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Final brake/propulsion invariant.
+    """Final brake/propulsion invariant for the V4.3.10 coast-first policy.
 
     0x275 brake request plus 0x08C friction remain a hard physical-braking
-    veto. Raw torque request/actual channels have no authority here.
+    acceleration veto. Raw torque request/actual channels have no authority.
     """
     feedback = hybrid_feedback_snapshot(CS, frame)
     _, physical_braking = hybrid_brake_feedback_state(feedback)
 
+    if command.brake_state == BrakeState.HOLD:
+      return command
+
     hydraulic = command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING)
-    release_or_handoff = command.pump < 0.0 or self.longitudinal.handoff_pending
+    release_pump = command.pump < 0.0
 
     if physical_braking:
-      # Defense in depth: even if an upstream state transition clears too early,
-      # physical regen/friction braking can never share an ACCEL command.
+      # Defense in depth: physical regen/friction can never share an ACCEL
+      # command, even if an upstream handoff transition clears too early.
       self.longitudinal.handoff_pending = True
       self.longitudinal.handoff_ready_counter = 0
       self.longitudinal.kinematic_ready_counter = 0
 
-    if hydraulic or physical_braking or (release_or_handoff and command.brake_state != BrakeState.HOLD):
+    if hydraulic or release_pump:
+      # Commanded 0x271 braking/release keeps DECEL framing, with a neutral
+      # 0x273 target so the powertrain is not asked for extra slowing.
       command.is_accel = False
       command.is_decel = True
-      command.speed = min(float(command.speed), float(CS.out.vEgo))
-      self.longitudinal.speed_offset = min(0.0, float(self.longitudinal.speed_offset))
+      command.speed = float(CS.out.vEgo)
+      self.longitudinal.speed_offset = 0.0
+    elif physical_braking or self.longitudinal.handoff_pending:
+      # After 0x271 releases, keep the hard accel veto but use true neutral
+      # framing. This allows lingering regen/engine braking to unwind instead
+      # of holding IS_DECEL high.
+      command.is_accel = False
+      command.is_decel = False
+      command.speed = float(CS.out.vEgo)
+      self.longitudinal.speed_offset = 0.0
 
     return command
 
