@@ -54,7 +54,7 @@ class CarController:
     self.longitudinal = LongitudinalController()
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Final brake/propulsion invariant for the V4.3.10 coast-first policy.
+    """Final brake/propulsion invariant for the V5.0 coast-first policy.
 
     0x275 brake request plus 0x08C friction remain a hard physical-braking
     acceleration veto. Raw torque request/actual channels have no authority.
