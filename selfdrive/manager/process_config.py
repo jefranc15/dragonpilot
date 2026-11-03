@@ -14,7 +14,9 @@ procs = [
   # due to qualcomm kernel bugs SIGKILLing camerad sometimes causes page table corruption
   NativeProcess("camerad", "selfdrive/camerad", ["./camerad"], unkillable=True, driverview=True),
   NativeProcess("clocksd", "selfdrive/clocksd", ["./clocksd"]),
-  NativeProcess("dmonitoringmodeld", "selfdrive/modeld", ["./dmonitoringmodeld"], enabled=not MIPI and (not PC or WEBCAM), driverview=True),
+  # V5.0-NODMON night-test build: no IR illuminator / IR filter retained on the
+  # DIY OnePlus 3T, so disable driver-camera inference completely.
+  NativeProcess("dmonitoringmodeld", "selfdrive/modeld", ["./dmonitoringmodeld"], enabled=False, driverview=True),
   NativeProcess("logcatd", "selfdrive/logcatd", ["./logcatd"]),
   NativeProcess("loggerd", "selfdrive/loggerd", ["./loggerd"]),
   # Default to the R2/LegacyPilot 0.8.16 hybrid driving model. Setting
@@ -34,7 +36,9 @@ procs = [
   PythonProcess("calibrationd", "selfdrive.locationd.calibrationd"),
   PythonProcess("controlsd", "selfdrive.controls.controlsd"),
   PythonProcess("deleter", "selfdrive.loggerd.deleter", persistent=True),
-  PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", enabled=not MIPI and (not PC or WEBCAM), driverview=True),
+  # Keep driverMonitoringState alive/valid without running any face/pose model.
+  # This avoids DM alerts/commIssue while preserving the normal controls API.
+  PythonProcess("dmonitoringd", "selfdrive.monitoring.static_dmonitoringd", driverview=True),
   PythonProcess("logmessaged", "selfdrive.logmessaged", persistent=True),
   PythonProcess("pandad", "selfdrive.pandad", persistent=True),
   # DNGA uses a fixed vehicle model; non-DNGA ports are delegated back to the
