@@ -47,6 +47,21 @@ Afternoon --14 has RPM ~1,371 to ~2,806 while OP BRAKING and `0x273 IS_DECEL=1, 
 
 OEM camera request entry preceded OP's in three observed approaches by ~0.76–3.03s; these are differing request thresholds, not proof of physical actuator latency or matched stock ACC performance.
 
+## Time-causal planner / controller diagnostic
+
+Backward-only synchronization at selected 20Hz timestamps in afternoon segment `--6`:
+
+| Route t (s) | OP 0x271 | Planner acceleration[0] (m/s²) | CarControl requested acceleration (m/s²) | Measured aEgo (m/s²) | Radar lead dRel (m) |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 476.54 | READY | -0.013 | -0.359 | +0.045 | 37.9 |
+| 476.75 | BRAKING | -0.047 | -0.073 | -0.005 | 35.1 |
+| 477.10 | BRAKING | -0.135 | -1.000 | +0.008 | 35.9 |
+| 478.22 | BRAKING | -0.429 | -0.825 | -0.244 | 30.3 |
+
+The controller had requested deceleration before 0x271 BRAKING, and measured deceleration remained weak after BRAKING was commanded. This is a command-versus-response problem for that episode, not simply a missing brake entry. The numbers do not calibrate brake pressure.
+
+In marked segment `--14`, around t=1001.80–1002.25s, the *upstream* CarControl acceleration request was **positive +0.339 to +0.348m/s²** while the planner still asked for **-0.148 to -0.063m/s²**. Nevertheless, OP TX continued `0x271 BRAKING` and `0x273 IS_ACCEL=0`. This confirms controller/planner disagreement during the RPM rise but **does not** show a transmitted positive-propulsion command or prove an ECU cause. Reconcile the disagreement in offline diagnostics before changing any arbitration logic.
+
 ## Acceptance gates
 
 **Pass — offline path-construction logic:** No ndarray alias, camera and path translation each applied once, input immutable, deterministic unit/property tests.
