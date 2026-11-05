@@ -252,7 +252,7 @@ def main():
         print('segment %d/%d %s, replayed=%d'%(idx+1,len(segments),seg,counts['replayed_frames']),flush=True)
         if args.max_model_frames and counts['models_seen']>args.max_model_frames:
           break
-    cases_count=len(make_cases(args.cases,args.camera_cm,args.path_cm,V50,V51,CP))
+    cases_count=len(planners)
     if counts['rows']!=counts['replayed_frames']*cases_count:
       raise RuntimeError('Incomplete result: frame-to-rows mismatch')
     txt=folder/('summary_'+args.cases+'.txt')
