@@ -129,28 +129,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
         self.handoff_counter = 0
         self.release_counter = 0
 
-      # Confirm a fast-closing, trusted lead for 3 x 20Hz cycles, then hold
-      # 0x273 at vEgo with both mode bits zero. No negative speed target,
-      # regen request, hydraulic threshold change or braking delay is added.
-      coast_eligible = should_prepare_coast(
-        allowed=session.allowed,
-        moving_speed=float(CS.out.vEgo),
-        plan_fresh=plan.fresh,
-        lead_relevant=lead_state.relevant,
-        lead_status=lead_state.status and radar_fresh,
-        distance=lead_state.distance,
-        closing=lead_state.closing_speed,
-        ttc=lead_state.ttc,
-        urgent=lead_state.urgent or self.urgent_brake,
-        curve=plan.curve_active,
-        hydraulic=self.brake_active,
-        release=frame < self.release_pump_until_frame or self.sng_release_count > 0,
-        hold=self.stop_hold or self.sng_armed,
-      )
-      self.r1_coast_prepare.update(coast_eligible)
-    else:
-      self.r1_coast_prepare.reset()
-
     emergency_closing = (
       lead_state.relevant
       and lead_state.status
@@ -171,6 +149,32 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
       )
       or emergency_closing
     )
+
+    if R1_EXPERIMENTAL_LONGITUDINAL_ENABLED:
+      # Confirm a fast-closing, trusted lead for 3 x 20Hz cycles, then hold
+      # 0x273 at vEgo with both mode bits zero. No negative speed target,
+      # regen request, hydraulic threshold change or braking delay is added.
+      coast_eligible = should_prepare_coast(
+        allowed=session.allowed,
+        moving_speed=float(CS.out.vEgo),
+        plan_fresh=plan.fresh,
+        lead_relevant=lead_state.relevant,
+        lead_status=lead_state.status and radar_fresh,
+        distance=lead_state.distance,
+        closing=lead_state.closing_speed,
+        ttc=lead_state.ttc,
+        urgent=urgent_closing or self.urgent_brake,
+        curve=plan.curve_active,
+        hydraulic=self.brake_active,
+        release=frame < self.release_pump_until_frame or self.sng_release_count > 0,
+        hold=self.stop_hold or self.sng_armed,
+      )
+      self.r1_coast_prepare.update(coast_eligible)
+    else:
+      self.r1_coast_prepare.reset()
+
+    else:
+      self.r1_coast_prepare.reset()
 
     coast_release_candidate = (
       self.brake_active
