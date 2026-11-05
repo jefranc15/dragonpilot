@@ -173,9 +173,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     else:
       self.r1_coast_prepare.reset()
 
-    else:
-      self.r1_coast_prepare.reset()
-
     coast_release_candidate = (
       self.brake_active
       and (not self.curve_brake_active)
