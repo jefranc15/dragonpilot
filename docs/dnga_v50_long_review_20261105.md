@@ -24,6 +24,13 @@ The standalone offline audit of paired CAN samples identifies 31 approximately c
 4. OEM camera source-2 0x271 entry may precede OP source-0 entry by 0.76–3.03s in specific approaches. This is a difference in camera/request thresholds, **not** proof stock ACC would apply brakes sooner or harder while OP is active.
 5. Existing final propulsion interlock uses 0x275 and 0x08C conservatively. **Do not weaken it** from the observed correlations.
 
+## Additional lead/planner sequence (backward-only historical alignment)
+
+- Segment **--6**: at route t=476.55s, lead ~37.85m ahead with vRel~-4.64m/s. At 478.16s, lead ~28.42m, vRel~-5.8m/s. The planner's first-point acceleration changed from approximately -0.013m/s² to -0.429m/s² over that interval; the user then intervened. OP was **already BRAKING**; inadequate physical deceleration and the gradually increasing magnitude must be evaluated as separate effects.
+- Segment **--14**: around 1000.46s, lead ~21.1m, closing by ~1.44m/s, and first-point planner acceleration was still **positive ~+0.07m/s²** when hydraulic braking began. At 1001.30s the lead had increased to ~23.6m and was closing only ~0.27m/s; by 1002.20s it was opening at ~+0.70m/s and distance ~26.8m, while the planner still asked for modest deceleration and OP continued BRAKING. This offers a **specific coast-release hypothesis** for offline shadow tests (lead pulling away while braking and driver/PID seeking acceleration), NOT authority to release brakes in the vehicle. The measured aEgo-based release gate blocks handoff when aEgo is positive, which coincides with the segment-14 RPM rise. The physical/ECU meaning of RPM remains unresolved.
+
+Avoid simplistic release-by-vRel: lead selection changes, radar noise, curves, and brake-intervention conditions can make such a rule unsafe. Any candidate must preserve urgent/reentry exceptions and be counterfactually replayed across all episodes first.
+
 ## Candidate cause hypotheses requiring discrimination
 
 - Slow 0x271 hydraulic entry or ramp versus closing-lead trajectory.
