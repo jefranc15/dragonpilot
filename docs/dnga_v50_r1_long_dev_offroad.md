@@ -1,3 +1,5 @@
+> **2026-11-06 CORRECTION:** The historical table below mislabeled `CarControl.Actuators.steer` as longitudinal PID `actuators.accel`. Re-decoding the five native release samples finds **positive** longitudinal commands at all five points; therefore the experimental stale-handoff-abort predicate is **false** at those releases. The proposed chatter fix is unvalidated. See [native replay correction](dnga_v50_r1_native_replay_correction.md). Keep `R1_EXPERIMENTAL_LONGITUDINAL_ENABLED = False`. The older event interpretation below is retained only as history.
+
 # DNGA V5.0-R1 experimental longitudinal candidate — OFFROAD ONLY
 
 Base: `V5.0`, commit `ce841812a5b17a6bdcac9b4e9deb5235f06978b9`.
