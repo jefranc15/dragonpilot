@@ -38,6 +38,14 @@ Avoid simplistic release-by-vRel: lead selection changes, radar noise, curves, a
 - ECU arbitration / bus-2 OEM READY versus OP bus-0 BRAKING and resulting physical brake response.
 - Re-entry following V5.0's coast-first release; changing hysteresis alone risks later braking.
 
+## Additional counterfactual: coast-release shadow scan
+
+An offline-only backwards-timestamp-aligned scan was applied to the prior decoded November 5 logs. No CAN commands were changed. The *hypothetical* release candidate required all of: existing OP 0x271 BRAKING, vEgo >=10m/s, selected radar lead valid and dRel >=20m, vRel >=-0.5m/s, first-point planner accel >=-0.20m/s², downstream requested accel >=+0.08m/s², measured aEgo >=-0.05m/s², and three successive approximately 50ms qualifying samples.
+
+**Result:** 12 qualifying samples, **all** in marked afternoon segment --14, from route t~1001.763 to 1002.313s. No other recorded segment qualified under this narrow shadow rule. The candidate appears only as the lead moves away while OP hydraulic brake state remains active, in the rising-RPM episode.
+
+This supports investigating an overly restrictive `COAST_HANDOFF_AEGO_MAX=-0.05` gate for *nonclosing leads*, but **does not approve implementing the hypothetical release rule**. Such a release could be hazardous if the lead brakes again or radar changes selection, and the original command's physical effect is unverified. No V5.0 moving-release or braking output was changed.
+
 ## Required before any actuation change
 
 - Create same-input V5.0 baseline versus hypothetical earlier-entry/ramp shadow outputs without transmitting CAN.
