@@ -15,8 +15,7 @@ from common.numpy_fast import clip, interp
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state
 from selfdrive.car.dnga.longitudinal_op_only import LongitudinalController as OpenpilotOnlyLongitudinalController
 from selfdrive.car.dnga.longitudinal_r1_policy import (
-  CoastPreparationLatch, LeadBlipGrace, should_prepare_coast, should_bridge_lead_blip,
-  LEAD_BLIP_MAX_RADAR_AGE_FRAMES,
+  CoastPreparationLatch, should_prepare_coast, should_abort_handoff,
 )
 from selfdrive.car.dnga.values import BrakeState, CarControllerParams, LongitudinalParams as P
 
@@ -52,8 +51,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
   def _reset(self, frame, a_ego):
     super()._reset(frame, a_ego)
     self.r1_coast_prepare = CoastPreparationLatch()
-    self.r1_lead_blip = LeadBlipGrace()
-    self.r1_lead_blip_active = False
 
   def _update_near_set_coast(self, CS, plan, lead_state, apply_accel):
     # Never synthesize a negative 0x273 target near the cruise setpoint.
@@ -90,8 +87,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     super()._clear_hydraulic(frame, reentry=reentry)
     self.coast_release_counter = 0
     self.r1_coast_prepare.reset()
-    self.r1_lead_blip = LeadBlipGrace()
-    self.r1_lead_blip_active = False
     if reentry:
       # Prevent the V4.3.9-style brake-off/brake-on chatter. The base urgent,
       # stopped-lead and guard entry paths explicitly bypass this deadline.
@@ -113,38 +108,30 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     """
     if R1_EXPERIMENTAL_LONGITUDINAL_ENABLED:
       radar_age = frame - self.radar_frame
-      radar_fresh = 0 <= radar_age <= LEAD_BLIP_MAX_RADAR_AGE_FRAMES
+      radar_fresh = 0 <= radar_age <= 15
 
-      # Smooth a brief, trusted planner-hasLead dropout only if an independently
-      # fresh radar target remains closing and planner deceleration persists.
-      # Driver cancel, brake pedal, invalid radar and long dropouts are NOT
-      # bridged. No increased hydraulic magnitude or re-entry delay.
-      grace_eligible = should_bridge_lead_blip(
+      # V5.0's inherited handoff_active latch can survive after positive PID
+      # demand disappears. Do not let an OLD release request override NEW
+      # negative PID + fresh planner braking demand. This is release-latch
+      # cancellation only: no new brake entry or increased magnitude.
+      if should_abort_handoff(
         allowed=session.allowed,
         braking=self.brake_active,
         curve=self.curve_brake_active,
+        hold=self.stop_hold or self.sng_armed,
         plan_fresh=plan.fresh,
-        plan_has_lead=plan.has_lead,
-        radar_fresh=radar_fresh,
-        lead_status=lead_state.status,
-        distance=lead_state.distance,
-        closing=lead_state.closing_speed,
-        ttc=lead_state.ttc,
+        lead_relevant=lead_state.relevant,
+        lead_status=lead_state.status and radar_fresh,
         planner_brake=plan.brake,
-      )
-      self.r1_lead_blip_active = self.r1_lead_blip.update(
-        braking=self.brake_active,
-        plan_has_lead=plan.has_lead,
-        trusted_lead=lead_state.relevant and lead_state.status and radar_fresh,
-        eligible=grace_eligible,
-      )
-      if self.r1_lead_blip_active:
-        plan = replace(plan, has_lead=True)
-        lead_state = replace(lead_state, relevant=True)
+        pid_accel=apply_accel,
+      ):
+        self.handoff_active = False
+        self.handoff_counter = 0
+        self.release_counter = 0
 
-      # This only requests a neutral coast (0x273 at vEgo with both mode
-      # flags zero). It does NOT suppress hydraulic entry if the original
-      # lead/urgent/stop state machine subsequently calls for 0x271.
+      # Confirm a fast-closing, trusted lead for 3 x 20Hz cycles, then hold
+      # 0x273 at vEgo with both mode bits zero. No negative speed target,
+      # regen request, hydraulic threshold change or braking delay is added.
       coast_eligible = should_prepare_coast(
         allowed=session.allowed,
         moving_speed=float(CS.out.vEgo),
@@ -163,7 +150,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
       self.r1_coast_prepare.update(coast_eligible)
     else:
       self.r1_coast_prepare.reset()
-      self.r1_lead_blip_active = False
 
     emergency_closing = (
       lead_state.relevant
@@ -189,7 +175,6 @@ class LongitudinalController(OpenpilotOnlyLongitudinalController):
     coast_release_candidate = (
       self.brake_active
       and (not self.curve_brake_active)
-      and (not self.r1_lead_blip_active)
       and session.allowed
       and (CS.out.vEgo >= COAST_HANDOFF_MIN_SPEED)
       and plan.fresh
