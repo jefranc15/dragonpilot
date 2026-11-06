@@ -37,6 +37,7 @@ class LongitudinalController(V50Controller):
                   handoff_counter=int(self.handoff_counter),
                   release_counter=int(self.release_counter),
                   coast_release_counter=int(self.coast_release_counter),
+                  curve_brake_active=bool(self.curve_brake_active),
                   lead_loss_counter=int(self.lead_loss_counter),
                   apply_brake=_finite(self.apply_brake),
                   sng_armed=bool(self.sng_armed), stop_hold=bool(self.stop_hold),
@@ -55,6 +56,13 @@ class LongitudinalController(V50Controller):
       pid_accel=_finite(apply_accel), lead_relevant=bool(lead_state.relevant),
       lead_status=bool(lead_state.status), closing=_finite(lead_state.closing_speed),
       dRel=_finite(lead_state.distance), ttc=_finite(lead_state.ttc),
+      source=str(getattr(plan, 'source', '')),
+      turn_speed=_finite(getattr(plan, 'turn_speed', 0.0)),
+      curve_brake_active=bool(self.curve_brake_active),
+      curve_speed_error=max(0.0, _finite(CS.out.vEgo) - _finite(getattr(plan, 'turn_speed', 0.0))) if plan.curve_active else 0.0,
+      engine_rpm=_finite(getattr(CS.out, 'engineRPM', 0.0)),
+      pedal_gas=bool(getattr(CS.out, 'gasPressed', False)),
+      pedal_brake=bool(getattr(CS.out, 'brakePressed', False)),
       urgent_lead=bool(lead_state.urgent), curve_active=bool(plan.curve_active),
       was_hydraulic=was_active, coast_counter_before=before_counter)
     ret = super()._update_hydraulic(CS, frame, session, apply_accel, plan, lead_state)
