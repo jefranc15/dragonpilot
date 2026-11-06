@@ -118,7 +118,7 @@ def replay(paths, output):
   output.mkdir(parents=True, exist_ok=True)
   route = None
   frame = equal = different = 0
-  events, commands, sent_brakes = [], [], []
+  events, commands, sent_brakes, samples, panda_states = [], [], [], [], []
   cs = vehicle_state()
   pair = make_controllers()
 
@@ -143,6 +143,13 @@ def replay(paths, output):
       elif tag == 'carState':
         cs.out = e.carState
         cs.op_distance_val = max(0, min(2, int(cs.out.distanceLines) - 1))
+      elif tag == 'pandaStates':
+        for panda in e.pandaStates:
+          panda_states.append(dict(route=route, t_ns=t_ns,
+            safety_model=str(panda.safetyModel), safety_param=int(panda.safetyParam),
+            panda_type=str(panda.pandaType), harness_status=str(panda.harnessStatus),
+            controls_allowed=bool(panda.controlsAllowed),
+            blocked_count=int(panda.blockedCnt), heartbeat_lost=bool(panda.heartbeatLost)))
       elif tag == 'can':
         for msg in e.can:
           if int(msg.src) == 1:
@@ -155,6 +162,7 @@ def replay(paths, output):
         cc = e.carControl
         args = (bool(cc.enabled), cs, frame, float(cc.actuators.accel),
                 bool(cc.cruiseControl.cancel), bool(cc.hudControl.leadVisible))
+        pair[1].r2_replay_log_ns = t_ns
         a = pair[0].update(*args)
         b = pair[1].update(*args)
         if canonical(a) != canonical(b):
