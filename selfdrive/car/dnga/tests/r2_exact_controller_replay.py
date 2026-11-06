@@ -76,7 +76,7 @@ def iter_rlogs(inputs):
         members = sorted(
           [name for name in archive.namelist()
            if name.endswith('/rlog.bz2')
-           and re.search(r'\\d{4}-\\d{2}-\\d{2}--\\d{2}-\\d{2}-\\d{2}--\\d+',
+           and re.search(r'\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}--\d+',
                          str(Path(name).parent))],
           key=lambda name: native_sort(Path(name))
         )
