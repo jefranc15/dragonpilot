@@ -151,13 +151,15 @@ def replay(paths, output):
     indices.setdefault(r, []).append((t, state))
   for k in indices:
     indices[k].sort()
+    seq = indices[k]
+    indices[k] = ([e[0] for e in seq], seq)
 
   total = matched = 0
   for c in commands:
-    seq = indices.get(c['route'], [])
-    if not seq:
+    entry = indices.get(c['route'])
+    if not entry:
       continue
-    times = [e[0] for e in seq]
+    times, seq = entry
     i = bisect.bisect_left(times, c['t_ns'])
     near = [seq[j] for j in (i - 1, i, i + 1) if 0 <= j < len(seq)]
     if not near:
