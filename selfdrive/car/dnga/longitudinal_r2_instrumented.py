@@ -22,6 +22,7 @@ class LongitudinalController(V50Controller):
     self.r2_context = None
     self.r2_last_guard = None
     self.r2_replay_only = True
+    self.r2_replay_log_ns = -1
 
   def _update_stop_guard(self, CS, frame, planner_brake, moving_allowed, lead_state):
     guard = super()._update_stop_guard(CS, frame, planner_brake, moving_allowed, lead_state)
@@ -32,7 +33,8 @@ class LongitudinalController(V50Controller):
 
   def _clear_hydraulic(self, frame, reentry=True):
     # _clear_hydraulic resets the latch/counters; capture their true values FIRST.
-    before = dict(frame=int(frame), reentry=bool(reentry),
+    before = dict(frame=int(frame), log_mono_ns=int(self.r2_replay_log_ns),
+                  reentry=bool(reentry),
                   handoff_active=bool(self.handoff_active),
                   handoff_counter=int(self.handoff_counter),
                   release_counter=int(self.release_counter),
@@ -50,7 +52,8 @@ class LongitudinalController(V50Controller):
   def _update_hydraulic(self, CS, frame, session, apply_accel, plan, lead_state):
     was_active = bool(self.brake_active)
     before_counter = int(self.coast_release_counter)
-    self.r2_context = dict(vEgo=_finite(CS.out.vEgo), aEgo=_finite(CS.out.aEgo),
+    self.r2_context = dict(log_mono_ns=int(self.r2_replay_log_ns),
+      vEgo=_finite(CS.out.vEgo), aEgo=_finite(CS.out.aEgo),
       allowed=bool(session.allowed), plan_fresh=bool(plan.fresh),
       planner_accel=_finite(plan.accel), planner_brake=_finite(plan.brake),
       pid_accel=_finite(apply_accel), lead_relevant=bool(lead_state.relevant),
