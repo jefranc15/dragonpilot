@@ -174,6 +174,28 @@ def replay(paths, output):
                                brake_state=int(a.brake_state),
                                v50=str(canonical(a)), r2_probe=str(canonical(b)),
                                identical=(canonical(a) == canonical(b))))
+          # Time-aligned command and state trace for the Nov 6 no-lead
+          # curve event; does not affect either controller's output.
+          samples.append(dict(route=route, t_ns=t_ns, frame=frame,
+            brake_state=int(a.brake_state),
+            enabled=bool(a.enabled), lead=bool(a.lead),
+            acc_cmd_kph=round(float(a.speed) * 3.6, 4),
+            is_accel=bool(a.is_accel), is_decel=bool(a.is_decel),
+            rpm=round(float(getattr(cs.out, 'engineRPM', 0.0)), 2),
+            v_ego=round(float(cs.out.vEgo), 5),
+            a_ego=round(float(cs.out.aEgo), 5),
+            pedal_gas=bool(cs.out.gasPressed),
+            pedal_brake=bool(cs.out.brakePressed),
+            pid_accel=round(float(cc.actuators.accel), 5),
+            plan_source=str(pair[1].plan_source),
+            plan_has_lead=bool(pair[1].plan_has_lead),
+            plan_accel=round(float(pair[1].plan_accel), 5),
+            curve_brake_active=bool(pair[1].curve_brake_active),
+            brake_active=bool(pair[1].brake_active),
+            handoff_active=bool(pair[1].handoff_active),
+            coast_release_counter=int(pair[1].coast_release_counter),
+            release_counter=int(pair[1].release_counter),
+            reentry_deadline=int(pair[1].brake_reentry_frame)))
         frame += 1
 
     events.extend(dict(route=route, **v) for v in pair[1].r2_events)
@@ -189,6 +211,15 @@ def replay(paths, output):
                                            'v50', 'r2_probe', 'identical'])
     writer.writeheader()
     writer.writerows(commands)
+
+  with (output/'r2_20hz_state_trace.csv').open('w', newline='') as f:
+    if samples:
+      writer = csv.DictWriter(f, fieldnames=list(samples[0]))
+      writer.writeheader()
+      writer.writerows(samples)
+  with (output/'r2_panda_states.jsonl').open('w') as f:
+    for p in panda_states:
+      f.write(json.dumps(p, sort_keys=True) + '\n')
 
   indices = {}
   for r, t, state in sent_brakes:
@@ -219,6 +250,8 @@ def replay(paths, output):
                  recorded_brake_states_matching=matched,
                  recorded_state_agreement=agreement,
                  baseline_replay_valid=valid,
+                 controller_trace_samples=len(samples),
+                 panda_state_samples=len(panda_states),
                  physical_vehicle_response_simulated=False)
   (output/'r2_replay_summary.json').write_text(json.dumps(summary, indent=2)+'\n')
   print(json.dumps(summary, indent=2))
