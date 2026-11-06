@@ -16,6 +16,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from cereal import log
+
+# Exact V5.0 longitudinal.py imports cereal.messaging, whose native
+# messaging_pyx is absent in an unbuilt Termux worktree. Replay never uses
+# real sockets; both controllers get RecordedFeed below. Bootstrap BEFORE
+# importing any longitudinal module. This file is not used by CarController.
+from r2_replay_offline_messaging import install_offline_messaging
+install_offline_messaging()
+
 from selfdrive.car.dnga.dnga_hybrid_feedback import (
   initialize_hybrid_feedback_state, apply_hybrid_feedback_frame,
 )
