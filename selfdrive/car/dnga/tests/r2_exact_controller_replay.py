@@ -11,6 +11,7 @@ import bz2
 import csv
 import json
 import re
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -67,6 +68,27 @@ def native_sort(path):
   return route_label(path), int(m.group(1)) if m else -1
 
 
+def iter_rlogs(inputs):
+  """Yield one decompressed rlog at a time from paths or a ZIP without extraction."""
+  for item in sorted(map(Path, inputs)):
+    if item.suffix.lower() == '.zip':
+      with zipfile.ZipFile(item) as archive:
+        members = sorted(
+          [name for name in archive.namelist()
+           if name.endswith('/rlog.bz2')
+           and re.search(r'\\d{4}-\\d{2}-\\d{2}--\\d{2}-\\d{2}-\\d{2}--\\d+',
+                         str(Path(name).parent))],
+          key=lambda name: native_sort(Path(name))
+        )
+        if not members:
+          raise ValueError('ZIP has no YYYY-MM-DD--HH-MM-SS--N/rlog.bz2 entries: ' + str(item))
+        print('ZIP:', item, 'rlog segments:', len(members), flush=True)
+        for name in members:
+          yield Path(name), bz2.decompress(archive.read(name))
+    else:
+      yield item, bz2.decompress(item.read_bytes())
+
+
 def canonical(command):
   if command is None:
     return None
@@ -85,7 +107,7 @@ def replay(paths, output):
   cs = vehicle_state()
   pair = make_controllers()
 
-  for path in sorted(map(Path, paths), key=native_sort):
+  for path, raw in iter_rlogs(paths):
     if route_label(path) != route:
       route = route_label(path)
       pair = make_controllers()
@@ -94,7 +116,6 @@ def replay(paths, output):
       events.append(dict(event='route_start', route=route))
 
     # Read exactly one rlog at a time to bound memory on OnePlus 3T.
-    raw = bz2.decompress(path.read_bytes())
     for e in log.Event.read_multiple_bytes(raw):
       tag = e.which()
       t_ns = int(e.logMonoTime)
