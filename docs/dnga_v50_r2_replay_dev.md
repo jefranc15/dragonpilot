@@ -84,3 +84,28 @@ Exact controller replay reproduces recorded 0x271; identify internal
 release reason; test normal/urgent/no-lead/SNG/HOLD, driver overrides and
 0x275/0x08C physical-brake propulsion veto; then independent brake response
 and closed-course validation. Experimental actuation should remain disabled.
+
+## Direct ZIP replay (OnePlus 3T)
+
+The replay runner now accepts the original `/data/realdata1.zip` directly,
+without extracting the 39 rlog.bz2 segments to disk. It enumerates only
+`YYYY-MM-DD--HH-MM-SS--segment/rlog.bz2` entries and decompresses one
+segment at a time, preserving route ordering. This was checked against the
+previously uploaded November 5 archive containing 39 segments.
+
+From an isolated checkout of `V5.0-R2-replay-dev` with a working 0.8.13
+Python/cereal environment:
+
+```bash
+PYTHONPATH="$PWD" python3 -m unittest discover \\
+  -s selfdrive/car/dnga/tests -p 'test_longitudinal_r2_zip_input.py' -v
+PYTHONPATH="$PWD" python3 selfdrive/car/dnga/tests/r2_exact_controller_replay.py \\
+  /data/realdata1.zip --output /data/v50_r2_results
+```
+
+**Do not assume success from a completed command alone.** Check
+`r2_replay_summary.json`: the runner requires all probe/base command tuples
+to match and >=95% reconstructed-vs-recorded 0x271 BRAKE_STATE agreement.
+The latter gate is a preliminary state-level check, not a CAN-byte-exact or
+physical brake-response validation. A failing gate means that state results
+are untrusted; do not turn on experimental longitudinal actuation.
