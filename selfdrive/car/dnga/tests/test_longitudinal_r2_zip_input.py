@@ -34,6 +34,24 @@ class TestR2ZipReader(unittest.TestCase):
       self.assertEqual([bytes(raw) for _, raw in received], [b'TWO', b'TEN'])
       self.assertFalse((Path(tmp) / '2026-11-05--11-32-49--2').exists())
 
+  def test_orders_plain_rlog_paths_numerically(self):
+    read = load_zip_reader()
+    with tempfile.TemporaryDirectory() as tmp:
+      base = Path(tmp)
+      files = []
+      for segment, label in ((10, b'TEN'), (2, b'TWO'), (0, b'ZERO')):
+        path = base / ('2026-11-05--11-32-49--%d' % segment) / 'rlog.bz2'
+        path.parent.mkdir(parents=True)
+        path.write_bytes(bz2.compress(label))
+        files.append(path)
+      received = list(read(files))
+      self.assertEqual([p.parent.name for p, _ in received],
+                       ['2026-11-05--11-32-49--0',
+                        '2026-11-05--11-32-49--2',
+                        '2026-11-05--11-32-49--10'])
+      self.assertEqual([raw for _, raw in received],
+                       [b'ZERO', b'TWO', b'TEN'])
+
   def test_bad_archive_fails_explicitly(self):
     read = load_zip_reader()
     with tempfile.TemporaryDirectory() as tmp:
