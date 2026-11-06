@@ -109,3 +109,22 @@ to match and >=95% reconstructed-vs-recorded 0x271 BRAKE_STATE agreement.
 The latter gate is a preliminary state-level check, not a CAN-byte-exact or
 physical brake-response validation. A failing gate means that state results
 are untrusted; do not turn on experimental longitudinal actuation.
+
+## Termux messaging_pyx workaround (2026-11-06)
+
+The isolated R2 Git worktree does not contain the compiled native
+`cereal.messaging.messaging_pyx` extension even when `from cereal import log`
+works. The original controller only uses `messaging.SubMaster` to subscribe
+to planner/radar during initialization, but the replay supplies its own
+`RecordedFeed` to BOTH controller instances.
+
+`tests/r2_replay_offline_messaging.py` therefore installs a *replay-process-
+local*, fail-closed `cereal.messaging.SubMaster` stub **before** importing
+the longitudinal controller. It never opens live messaging sockets.
+The original module and the active `carcontroller.py` are unchanged.
+The test `test_longitudinal_r2_runtime_import.py` verifies that both
+controllers can actually initialize in the device Python environment,
+so import failures appear during startup tests instead of after `nohup`.
+
+Keep this shim exclusive to the isolated offline replay entrypoint. It must
+never be imported by a live on-road process or a driving controller.
