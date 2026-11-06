@@ -6,6 +6,7 @@ from pathlib import Path
 class StubV50:
   def __init__(self):
     self.brake_active = True
+    self.curve_brake_active = True
     self.handoff_active = True
     self.handoff_counter = 3
     self.release_counter = 10
@@ -57,6 +58,8 @@ class TestR2Probe(unittest.TestCase):
     self.assertEqual(e['release_counter'], 10)
     self.assertTrue(e['handoff_active'])
     self.assertEqual(e['coast_release_counter'], 4)
+    self.assertTrue(e['curve_brake_active'])
+    self.assertTrue(e['context']['curve_brake_active'])
     self.assertAlmostEqual(e['context']['planner_brake'], .15)
     self.assertAlmostEqual(e['context']['pid_accel'], .8)
 
