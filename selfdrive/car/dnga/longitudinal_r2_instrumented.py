@@ -31,6 +31,20 @@ class LongitudinalController(V50Controller):
                               completion=bool(guard.completion))
     return guard
 
+  def _start_staged_release(self, frame):
+    # Preserve entry/exit order: _start_staged_release normally runs just
+    # before _clear_hydraulic. Recording it here does not alter any decision.
+    self.r2_events.append(dict(
+      event='staged_release_start', frame=int(frame),
+      log_mono_ns=int(self.r2_replay_log_ns),
+      handoff_active=bool(self.handoff_active),
+      release_counter=int(self.release_counter),
+      coast_release_counter=int(self.coast_release_counter),
+      curve_brake_active=bool(self.curve_brake_active),
+      context=dict(self.r2_context or {}),
+    ))
+    return super()._start_staged_release(frame)
+
   def _clear_hydraulic(self, frame, reentry=True):
     # _clear_hydraulic resets the latch/counters; capture their true values FIRST.
     before = dict(frame=int(frame), log_mono_ns=int(self.r2_replay_log_ns),
