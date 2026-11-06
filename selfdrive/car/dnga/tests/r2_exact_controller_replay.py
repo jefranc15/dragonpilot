@@ -63,14 +63,17 @@ def route_label(path):
 
 
 def native_sort(path):
+  # Route timestamps also contain "--HH-MM-SS": parse ONLY the final
+  # "--segment" component, otherwise segment 10 sorts before segment 2.
   label = path.parent.name if path.name.startswith('rlog') else path.stem
-  m = re.search(r'--(\d+)(?:$|[^\d])', label)
-  return route_label(path), int(m.group(1)) if m else -1
+  route, separator, segment = label.rpartition('--')
+  return (route if separator else label,
+          int(segment) if separator and segment.isdecimal() else -1)
 
 
 def iter_rlogs(inputs):
   """Yield one decompressed rlog at a time from paths or a ZIP without extraction."""
-  for item in sorted(map(Path, inputs)):
+  for item in sorted(map(Path, inputs), key=native_sort):
     if item.suffix.lower() == '.zip':
       with zipfile.ZipFile(item) as archive:
         members = sorted(
