@@ -71,13 +71,16 @@ def route_label(path):
 
 
 def native_sort(path):
-  # Route timestamps also contain "--HH-MM-SS": parse ONLY the final
-  # "--segment" component, otherwise segment 10 sorts before segment 2.
+  # Route timestamps contain "--HH-MM-SS"; use only the FINAL segment number.
+  # Names like "--14-questionable behavior" must sort as segment 14.
   label = path.parent.name if path.name.startswith('rlog') else path.stem
   route, separator, segment = label.rpartition('--')
-  # Preserve ordering of hand-annotated folders such as
-  # "--14-questionable behavior": the numeric prefix is segment 14.
-  m = re.match(r'^(\\d+)(?:\\D.*)?
+  digits = ''
+  for char in segment:
+    if not char.isdecimal():
+      break
+    digits += char
+  return (route if separator else label, int(digits) if digits else -1)
 
 
 def iter_rlogs(inputs):
