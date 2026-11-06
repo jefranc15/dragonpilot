@@ -52,6 +52,29 @@ class TestR2ZipReader(unittest.TestCase):
       self.assertEqual([raw for _, raw in received],
                        [b'ZERO', b'TWO', b'TEN'])
 
+  def test_annotated_segments_sort_after_13_not_before_zero(self):
+    read = load_zip_reader()
+    with tempfile.TemporaryDirectory() as tmp:
+      archive = Path(tmp) / 'annotated.zip'
+      with zipfile.ZipFile(archive, 'w') as z:
+        z.writestr('2026-11-05--14-45-36--15-questionable behavior/rlog.bz2',
+                   bz2.compress(b'FIFTEEN'))
+        z.writestr('2026-11-05--14-45-36--14-questionable behavior/rlog.bz2',
+                   bz2.compress(b'FOURTEEN'))
+        z.writestr('2026-11-05--14-45-36--0/rlog.bz2',
+                   bz2.compress(b'ZERO'))
+        z.writestr('2026-11-05--14-45-36--13/rlog.bz2',
+                   bz2.compress(b'THIRTEEN'))
+      received = list(read([archive]))
+      self.assertEqual([p.parent.name for p, _ in received], [
+        '2026-11-05--14-45-36--0',
+        '2026-11-05--14-45-36--13',
+        '2026-11-05--14-45-36--14-questionable behavior',
+        '2026-11-05--14-45-36--15-questionable behavior',
+      ])
+      self.assertEqual([raw for _, raw in received],
+                       [b'ZERO', b'THIRTEEN', b'FOURTEEN', b'FIFTEEN'])
+
   def test_bad_archive_fails_explicitly(self):
     read = load_zip_reader()
     with tempfile.TemporaryDirectory() as tmp:
