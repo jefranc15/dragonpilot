@@ -1,0 +1,25 @@
+name: R2 V4 experimental offline verification
+
+on:
+  push:
+    branches:
+      - v5.1-R2V4-closed-track
+  workflow_dispatch:
+
+jobs:
+  pure-python-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Syntax-check controller modules
+        run: |
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          python -m py_compile selfdrive/car/dnga/r2_v4_shadow_controller.py
+          python -m py_compile selfdrive/car/dnga/r2_v4_experimental_actuator.py
+      - name: R2 V4 shadow unit tests
+        run: PYTHONPATH=. python -m unittest discover -s selfdrive/car/dnga/tests -p 'test_r2_v4_shadow_controller.py' -v
+      - name: R2 V4 actuation pure-logic unit tests
+        run: PYTHONPATH=. python -m unittest discover -s selfdrive/car/dnga/tests -p 'test_r2_v4_experimental_actuator.py' -v
