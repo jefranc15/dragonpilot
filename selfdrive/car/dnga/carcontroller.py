@@ -10,6 +10,7 @@ from selfdrive.car.dnga.dngacan import (
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
 from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController
 from selfdrive.car.dnga.r2_v4_shadow_controller import R2V4ShadowController
+from selfdrive.car.dnga.r2_v4_experimental_actuator import R2V4ExperimentalActuator
 from selfdrive.swaglog import cloudlog
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
 
@@ -54,7 +55,8 @@ class CarController:
     self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
-    self.r2_v4_shadow = R2V4ShadowController()  # Counterfactual, never transmitted
+    self.r2_v4_shadow = R2V4ShadowController()  # Proposal generator; no direct CAN
+    self.r2_v4_actuator = R2V4ExperimentalActuator()  # Applied only with engaged OP
     self.r2_v4_last = None
     self.r2_v4_shadow_errors = 0
 
@@ -137,10 +139,12 @@ class CarController:
           result.brake_state, result.magnitude, result.target_kph, result.target_gap_kph,
           result.source_bridge, result.outside_stock_calibration, result.missing_275_response,
         )
+      return result
     except Exception as exc:
       self.r2_v4_shadow_errors += 1
       if frame % 100 == 0:
         cloudlog.warning("R2V4_SHADOW_ONLY observer error: %r", exc)
+      return None
 
   def update(
     self,
@@ -177,7 +181,31 @@ class CarController:
       )
     command = self.longitudinal.update(enabled, CS, frame, actuators.accel, pcm_cancel_cmd, lead)
     if command is not None:
+      # Compute the original V5.0 command and its existing brake-feedback veto.
       command = self._apply_brake_propulsion_interlock(command, CS, frame)
+      v50_command = command
+      # R2 V4 actual moving-braking experiment: coordinate 0x271 and 0x273.
+      proposal = self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd, v50_command)
+      command, r2_action = self.r2_v4_actuator.apply(
+        v50_command, proposal,
+        enabled=bool(enabled and CS.out.cruiseState.enabled and not pcm_cancel_cmd),
+        speed_mps=float(CS.out.vEgo),
+        override=bool(CS.out.brakePressed or CS.out.gasPressed),
+        urgent=bool(getattr(self.longitudinal, "urgent_brake", False)),
+        engagement_guard=(frame < int(getattr(self.longitudinal, "block_brake_until_frame", 0))),
+      )
+      if r2_action.active and (r2_action.state_changed or frame % 20 == 0):
+        cloudlog.info(
+          "R2V4_EXPERIMENTAL_TX f=%d reason=%s actual_state=%d mag=%d target=%.3f "
+          "is_dec=%d is_acc=%d 275raw=%d expected275=%d friction08c=%d "
+          "base_state=%d base_mag=%d base_target=%.3f",
+          frame, r2_action.reason, command.brake_state, command.magnitude,
+          command.speed, command.is_decel, command.is_accel,
+          int(getattr(CS, "hybrid_brake_request_raw_275", 0)),
+          r2_action.expected_275_raw,
+          int(getattr(CS, "hybrid_friction_raw_08c", 0)),
+          v50_command.brake_state, v50_command.magnitude, v50_command.speed,
+        )
       can_sends.append(
         dnga_create_accel_command(
           self.packer,
@@ -211,9 +239,6 @@ class CarController:
           CS.stock_fcw_off,
         )
       )
-    # Observe V4 only after V5.0 has finished packing its CAN messages.
-    if command is not None:
-      self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd, command)
     self.last_steer = apply_steer
     new_actuators = actuators.copy()
     new_actuators.steer = apply_steer / steer_max_interp
