@@ -19,6 +19,7 @@ jobs:
           python -m py_compile selfdrive/car/dnga/carcontroller.py
           python -m py_compile selfdrive/car/dnga/r2_v4_shadow_controller.py
           python -m py_compile selfdrive/car/dnga/r2_v4_experimental_actuator.py
+          python -m py_compile selfdrive/car/dnga/tests/test_r2_v4_transition_can_integration.py
       - name: R2 V4 shadow unit tests
         run: PYTHONPATH=. python -m unittest discover -s selfdrive/car/dnga/tests -p 'test_r2_v4_shadow_controller.py' -v
       - name: R2 V4 actuation pure-logic unit tests
