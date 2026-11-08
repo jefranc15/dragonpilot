@@ -27,7 +27,8 @@ class Command:
 
 def proposal(state=BRAKING, magnitude=1216, target_kph=71.82,
              remaining=0, gap=0.18, is_accel=False):
-  return SimpleNamespace(brake_state=state, magnitude=magnitude,\n                         pump=(-0.4 if magnitude == 1224 else 0.0),
+  return SimpleNamespace(brake_state=state, magnitude=magnitude,
+                         pump=(-0.4 if magnitude == 1224 else 0.0),
                          target_kph=target_kph, release_frames_left=remaining,
                          target_gap_kph=gap, is_accel=is_accel)
 
