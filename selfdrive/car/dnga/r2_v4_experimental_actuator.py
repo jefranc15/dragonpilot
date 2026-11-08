@@ -75,7 +75,7 @@ class R2V4ExperimentalActuator:
       return command, R2V4Actuation(False, False, 0.0, 0, "inactive")
 
     if (proposal is None or not isfinite(float(speed_mps)) or
-        speed_mps < MIN_V4_SPEED_MPS or engagement_guard or
+        (speed_mps < MIN_V4_SPEED_MPS and not self.last_v4_active) or engagement_guard or
         command.brake_state in (HOLD, CREEPING)):
       self.last_brake_strength = 0.0
       self.last_v4_active = False
@@ -124,7 +124,7 @@ class R2V4ExperimentalActuator:
         False, prior != BRAKING, magnitude_strength(command.magnitude), 0,
         "v5_braking_kept")
 
-    if proposal.brake_state == READY and proposal.release_frames_left > 0 and self.last_v4_active:
+    if (proposal.brake_state == READY and proposal.magnitude == 1224 and\n        proposal.pump == -0.4 and self.last_v4_active):
       output = replace(command,
                        brake_state=READY, magnitude=1224, pump=-0.4,
                        speed=min(float(speed_mps), max(0.0, proposal.target_kph / 3.6)),
