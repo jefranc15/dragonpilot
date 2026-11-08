@@ -21,7 +21,31 @@ jobs:
           python -m py_compile selfdrive/car/dnga/r2_v4_shadow_controller.py
           python -m py_compile selfdrive/car/dnga/r2_v4_experimental_actuator.py
           python -m py_compile selfdrive/car/dnga/tests/test_r2_v4_transition_can_integration.py
-      - name: R2 V4 shadow unit tests
-        run: PYTHONPATH=. python -m unittest discover -s selfdrive/car/dnga/tests -p 'test_r2_v4_shadow_controller.py' -v
-      - name: R2 V4 actuation pure-logic unit tests
-        run: PYTHONPATH=. python -m unittest discover -s selfdrive/car/dnga/tests -p 'test_r2_v4_experimental_actuator.py' -v
+      - name: R2 V4 pure-logic tests (no compiled cereal/capnp on host)
+        run: |
+          python - <<'PY'
+          import sys
+          import types
+          import unittest
+
+          # Only pure R2V4 modules are exercised in this job. Host CI does not
+          # have the device's compiled cereal/opendbc runtime.
+          for name, path in (
+              ("selfdrive", "selfdrive"),
+              ("selfdrive.car", "selfdrive/car"),
+              ("selfdrive.car.dnga", "selfdrive/car/dnga"),
+          ):
+              module = types.ModuleType(name)
+              module.__path__ = [path]
+              sys.modules[name] = module
+
+          loader = unittest.TestLoader()
+          suite = unittest.TestSuite()
+          for pattern in (
+              "test_r2_v4_shadow_controller.py",
+              "test_r2_v4_experimental_actuator.py",
+          ):
+              suite.addTests(loader.discover("selfdrive/car/dnga/tests", pattern=pattern))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() else 1)
+          PY
