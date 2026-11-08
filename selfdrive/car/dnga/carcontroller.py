@@ -9,6 +9,8 @@ from selfdrive.car.dnga.dngacan import (
 )
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
 from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController
+from selfdrive.car.dnga.r2_v4_shadow_controller import R2V4ShadowController
+from selfdrive.swaglog import cloudlog
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
 
 try:
@@ -52,6 +54,9 @@ class CarController:
     self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
+    self.r2_v4_shadow = R2V4ShadowController()  # Counterfactual, never transmitted
+    self.r2_v4_last = None
+    self.r2_v4_shadow_errors = 0
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
     """Final brake/propulsion invariant for the V5.0 coast-first policy.
@@ -92,6 +97,50 @@ class CarController:
       self.longitudinal.speed_offset = 0.0
 
     return command
+
+  def _observe_r2_v4(self, enabled, CS, frame, actuators, pcm_cancel_cmd):
+    """Diagnostic-only observer; never modifies output, controller, or CAN."""
+    try:
+      ctrl = self.longitudinal
+      plan_frame = int(getattr(ctrl, "plan_frame", -1000000))
+      source = str(getattr(ctrl, "plan_source", "")).lower().split(".")[-1]
+      plan_ok = 0 <= frame - plan_frame <= 25
+      current = 0.7 * float(getattr(ctrl, "plan_accel", 0.0)) + 0.3 * float(getattr(ctrl, "plan_accel_next", 0.0))
+      preview = current
+      if source == "turn":
+        preview = min(current, float(getattr(ctrl, "plan_curve_accel", current)))
+      elif source in ("lead0", "lead1"):
+        preview = min(current, float(getattr(ctrl, "plan_lead_accel", current)))
+      rx275 = int(getattr(CS, "hybrid_feedback_rx_frame_275", -1000000))
+      rx08c = int(getattr(CS, "hybrid_feedback_rx_frame_08c", -1000000))
+      fresh = (0 <= frame-rx275 <= 25 and 0 <= frame-rx08c <= 25)
+      session = bool(enabled and CS.out.cruiseState.enabled and plan_ok and not pcm_cancel_cmd)
+      result = self.r2_v4_shadow.step(
+        frame=frame, v_ego_mps=float(CS.out.vEgo),
+        planned_accel=current, preview_accel=preview,
+        downstream_pid=float(actuators.accel),
+        measured_accel=float(CS.out.aEgo), source=source,
+        has_lead=bool(getattr(ctrl, "plan_has_lead", False)), enabled=session,
+        driver_override=bool(CS.out.brakePressed or CS.out.gasPressed),
+        feedback_275=int(getattr(CS, "hybrid_brake_request_raw_275", 0)),
+        friction_08c=int(getattr(CS, "hybrid_friction_raw_08c", 0)),
+        feedback_fresh=fresh, feedback_sequence=(rx275, rx08c),
+        positive_accel_permitted=bool(actuators.accel > 0.05),
+        urgent=bool(getattr(ctrl, "urgent_brake", False)),
+      )
+      self.r2_v4_last = result
+      if session and frame % 100 == 0:
+        cloudlog.info(
+          "R2V4_SHADOW_ONLY f=%d src=%s would_state=%d would_mag=%d "
+          "would_target=%.2f gap=%.2f bridge=%d outside_stock=%d miss275=%d",
+          frame, source, result.brake_state, result.magnitude,
+          result.target_kph, result.target_gap_kph, result.source_bridge,
+          result.outside_stock_calibration, result.missing_275_response,
+        )
+    except Exception as exc:
+      self.r2_v4_shadow_errors += 1
+      if frame % 100 == 0:
+        cloudlog.warning("R2V4_SHADOW_ONLY observer error: %r", exc)
 
   def update(
     self,
@@ -162,6 +211,9 @@ class CarController:
           CS.stock_fcw_off,
         )
       )
+    # Observe V4 only after V5.0 has finished packing its CAN messages.
+    if command is not None:
+      self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd)
     self.last_steer = apply_steer
     new_actuators = actuators.copy()
     new_actuators.steer = apply_steer / steer_max_interp
