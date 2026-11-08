@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v5.1-R2V4-closed-track
+      - V5.2-Test
   workflow_dispatch:
 
 jobs:
