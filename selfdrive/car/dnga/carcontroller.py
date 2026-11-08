@@ -98,7 +98,7 @@ class CarController:
 
     return command
 
-  def _observe_r2_v4(self, enabled, CS, frame, actuators, pcm_cancel_cmd):
+  def _observe_r2_v4(self, enabled, CS, frame, actuators, pcm_cancel_cmd, command):
     """Diagnostic-only observer; never modifies output, controller, or CAN."""
     try:
       ctrl = self.longitudinal
@@ -131,11 +131,11 @@ class CarController:
       self.r2_v4_last = result
       if session and frame % 100 == 0:
         cloudlog.info(
-          "R2V4_SHADOW_ONLY f=%d src=%s would_state=%d would_mag=%d "
-          "would_target=%.2f gap=%.2f bridge=%d outside_stock=%d miss275=%d",
-          frame, source, result.brake_state, result.magnitude,
-          result.target_kph, result.target_gap_kph, result.source_bridge,
-          result.outside_stock_calibration, result.missing_275_response,
+          "R2V4_SHADOW_ONLY f=%d src=%s actual_state=%d actual_mag=%d actual_target_mps=%.3f "
+          "would_state=%d would_mag=%d would_target_kph=%.2f gap=%.2f bridge=%d out_of_stock=%d miss275=%d",
+          frame, source, command.brake_state, command.magnitude, command.speed,
+          result.brake_state, result.magnitude, result.target_kph, result.target_gap_kph,
+          result.source_bridge, result.outside_stock_calibration, result.missing_275_response,
         )
     except Exception as exc:
       self.r2_v4_shadow_errors += 1
@@ -213,7 +213,7 @@ class CarController:
       )
     # Observe V4 only after V5.0 has finished packing its CAN messages.
     if command is not None:
-      self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd)
+      self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd, command)
     self.last_steer = apply_steer
     new_actuators = actuators.copy()
     new_actuators.steer = apply_steer / steer_max_interp
