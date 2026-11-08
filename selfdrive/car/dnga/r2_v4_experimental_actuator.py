@@ -124,7 +124,8 @@ class R2V4ExperimentalActuator:
         False, prior != BRAKING, magnitude_strength(command.magnitude), 0,
         "v5_braking_kept")
 
-    if (proposal.brake_state == READY and proposal.magnitude == 1224 and\n        proposal.pump == -0.4 and self.last_v4_active):
+    if (proposal.brake_state == READY and proposal.magnitude == 1224 and
+        proposal.pump == -0.4 and self.last_v4_active):
       output = replace(command,
                        brake_state=READY, magnitude=1224, pump=-0.4,
                        speed=min(float(speed_mps), max(0.0, proposal.target_kph / 3.6)),
