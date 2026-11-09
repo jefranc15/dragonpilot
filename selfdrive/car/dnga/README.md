@@ -1,85 +1,95 @@
-# DNGA Toyota Yaris Cross HEV — v6.0 refactor
+# DNGA Toyota Yaris Cross HEV — v6.0 (R2 on V5.0 scaling)
 
-**Branch:** `v6.0` — experimental, not validated for active driving.
+**Development branch, not road-ready:** R2 live CAN selection is disabled.
+The earlier v6 R2 rewrite used a separate low-speed controller and did not
+preserve the full V5.0 brake scaling. Both issues were corrected.
 
-The car port has one command source per cycle. `CarController` chooses either
-the existing V5.0 longitudinal implementation or the integrated R2 controller;
-it does **not** compute V5.0 and then overlay an R2 shadow/actuator command.
-The normal moving-brake R2 policy begins at `0x271 MAGNITUDE=1216`, pump
-`-0.4`, then shapes demand progressively and sends a below-vEgo `0x273`
-speed target. The factory-inspired `READY / 1224 / -0.4` release remains
-experimental and not vehicle-response validated.
+## Normal OpenPilot car port layout
 
-## Runtime file structure
+- `carcontroller.py`: steering limits, CAN scheduler, HUD, 0x271/0x273
+  encoding call sites and final brake/propulsion veto
+- `longitudinal.py`: **one** V5.0-derived longitudinal state machine.
+  R2 replaces moving-brake/coast-first arbitration, starting at magnitude
+  1216, then uses inherited V5.0 _apply_brake_target filter/ramp, existing
+  speed-dependent caps and measured-deceleration governor.
+  The V5.0 base continues ALL low-speed stop-and-go, HOLD, CREEPING,
+  engagement/lead/feedback and propulsion-state updates in the same object
+- `longitudinal_v50_legacy.py`, `longitudinal_kinematic_guard.py`,
+  `longitudinal_op_only.py`, `longitudinal_atomic_release.py`: the
+  retained original V5.0 state machine/compatibility methods and fallback.
+  They are parents of the R2 controller, **not separate running controllers**
+- `dnga_hybrid_feedback.py`: read-only 0x275/0x08C feedback and freshness
+- `carstate.py`, `interface.py`, `values.py`, `dngacan.py`,
+  `radar_interface.py`: standard port roles; DBC `opendbc/dnga_hev.dbc`
 
-| File | Responsibility |
-|---|---|
-| `carcontroller.py` | Steering limits and CAN scheduling; one longitudinal command producer; final brake/propulsion veto; HUD |
-| `longitudinal.py` | Integrated R2 proposal, moving-brake state, 1216 entry, `0x273` coordination, release and brake feedback eligibility |
-| `longitudinal_v50_legacy.py` | Historical V5.0 base, preserved for low-speed compatibility and rollback |
-| `longitudinal_kinematic_guard.py` / `longitudinal_op_only.py` / `longitudinal_atomic_release.py` | Historical V5.0 compatibility chain; no extra on-road shadow producer |
-| `dnga_hybrid_feedback.py` | Validated frame checksums, 0x275/0x08C freshness and telemetry; torque-related values are diagnostic-only |
-| `carstate.py` | CAN state, ACC MAIN/SET/RES, brake, pedal and LKAS |
-| `interface.py` | CarParams, fingerprint, state and passive stock-camera CAN observation |
-| `dngacan.py` | Outgoing 0x1D0/0x271/0x273/0x274 packing |
-| `values.py` | Fingerprints, longitudinal/steering values and brake states |
-| `radar_interface.py` | Standard inherited no-radar interface |
+Previous standalone R2 shadow, actuator and replay modules were removed.
+Their history is available from V5.2 branches.
 
-DBC: `opendbc/dnga_hev.dbc`. No Panda firmware/safety changes here.
+## Braking algorithm
 
-The previous `r2_v4_shadow_controller.py`,
-`r2_v4_experimental_actuator.py`, and `r2_v4_direct_authority.py`
-modules and their obsolete tests have been removed. Their Git history
-remains accessible on the V5.2 branches.
+1. The inherited V5.0 code updates the SAME planner/radar/lead/session
+   state once at the normal 20 Hz longitudinal CAN cadence.
+2. **Below 5.6 m/s (~20 km/h), standstill, stop-hold, armed SNG or SNG
+   release:** the original V5.0 `_update_hydraulic` path runs unmodified.
+   There is no second low-speed controller or late state migration.
+3. Above that domain, the R2 moving-brake entry accepts legitimate
+   planner deceleration from a lead, selected vision turn (while above
+   the vision-turn speed), or user lower cruise set speed. It does **not**
+   require a V5.0 lead→coast→hydraulic handoff.
+4. On the first ordinary moving BRAKING request, `apply_brake = 0.08`
+   encodes with the ORIGINAL V5.0 `encode_hev_brake` to
+   `BRAKE_STATE=0x21, MAGNITUDE=1216, PUMP=-0.4`.
+5. The NEXT updates call the inherited `_apply_brake_target`:
+   V5.0 filter up/down (0.08), normal step +0.006/20 Hz,
+   urgent step +0.015/20 Hz, emergency +0.03/20 Hz,
+   release step -0.015/20 Hz. V5.0 cap functions determine
+   the maximum from road speed, distance setting, curve and urgency.
+   The first magnitude is **not** a fixed braking magnitude.
+6. During R2 moving BRAKING the lower 0x273 `ACC_CMD` is derived from
+   the current encoded brake strength and an empirical stock command
+   relationship, slewed by +0.18/-0.35 km/h per 20 Hz control update.
+   The final R2 interlock preserves the below-vEgo target. No direct
+   motor torque/regenerative current control is asserted or proved.
+7. Normal moving release ramps brake strength down with the V5.0
+   release rate/confirmation, then proposes a 24-update
+   READY/1224/-0.4 phase. This release hypothesis remains UNVALIDATED
+   against actual hybrid ECU behavior and previous engine-rev events.
+8. V5.0's emergency lead supervision, low-speed stop, normal accelerator
+   gating and HEV feedback rules remain inherited. Current R2
+   start/scale behavior nevertheless needs independent validation for
+   critical stopping and unexpected feedback.
 
-## Active-command contract
+## Safety status
 
-`carcontroller.py` has `V6_R2_ACTIVE_CAN = False` **by default**:
-- `False`: the original V5.0 controller alone generates the outgoing
-  longitudinal command. It still uses the original neutral-vEgo target
-  during hydraulic braking. No R2 shadow runs.
-- `True` (UNVALIDATED, DO NOT USE IN TRAFFIC): the integrated
-  `longitudinal.LongitudinalController` becomes the only moving-brake
-  command producer, retains the below-vEgo R2 target under the final
-  interlock, and hands stop-and-go/low-speed responsibility to the old
-  compatibility controller. The old V5.0 moving-brake authority is not
-  used as an R2 brake floor.
+`carcontroller.py`: `V6_R2_ACTIVE_CAN = False`.
 
-**Do not change the flag for driving** until HIL, native 0.8.13 CAN encoding,
-brake/CANCEL tests, low-speed takeover, independent pedal/ECU response
-measurements, and safety review are complete.
+- With FALSE (current repo default), CAN output uses the original V5.0
+  longitudinal controller and neutral-vEgo target during its braking.
+  R2 is not executed/shadowed in this mode.
+- With TRUE, the R2 controller would replace normal moving-brake
+  arbitration and change 0x271/0x273 requests. **Do not enable for an
+  engaged public-road drive without verifying a physical safe operating
+  envelope and ECU feedback at every speed.**
 
-## What the logs support — and do not support
+Passing the isolated tests only demonstrates source-level behavior. It
+does not verify actual DBC packing on the OnePlus 3T, Panda safety,
+OEM ECU response, regenerative torque, emergency deceleration,
+release/re-entry, or a safe SNG boundary handoff. Earlier November 6
+logs recorded unexplained acceleration after braking (+1.293 m/s²),
+which has not been physically resolved. Missing or inconsistent 0x275
+response still lacks a validated brake-failure/degraded-mode strategy.
 
-The genuine stock ACC samples demonstrated an initial mild factory braking
-magnitude `1216` with a 0x275 raw request association around `-163`; the
-correlation is with the factory brake command, not independently verified
-MG2 wheel torque or actual regenerative current. The below-vEgo 0x273
-target was present in stock samples before the first hydraulic command, but
-the current R2 fit is limited by the stock sample's speed domain.
+## Offline verification
 
-The November 6 V5.0 no-lead curve log captured **+1.293 m/s²** measured
-acceleration after a BRAKING→READY transition while OP transmitted neither
-positive ACCEL mode nor driver gas. The physical source is unresolved. No
-algorithmic refactor can certify this interaction without physical testing.
-The existing Panda safety hook was previously permissive and must be
-independently assessed.
+`.github/workflows/v60-r2-offline.yml` syntax-checks the DNGA port,
+and tests 1216 entry, V5.0 rate limits, highway/curve envelope,
+source authority, release ramp and inherited low-speed call flow.
 
-## Validation
-
-GitHub Actions `.github/workflows/v60-r2-offline.yml` syntax-checks the
-car port and runs isolated R2 logic tests without compiled cereal/DBC.
-Passing these checks does not simulate the ECU, validate actual CAN bytes,
-prove emergency stopping behavior, or qualify the branch for road use.
-
-Review command (parked, no checkout):
+Review only, without changing the installed phone branch:
 
 ```sh
 cd /data/openpilot
 git fetch origin refs/heads/v6.0:refs/remotes/origin/v6.0
-git diff --stat V5.2-R2-1216-direct-dev..origin/v6.0
-git show origin/v6.0:selfdrive/car/dnga/README.md
+git diff --stat origin/v6.0-pre-v50-scaling..origin/v6.0
+git show origin/v6.0:selfdrive/car/dnga/longitudinal.py
 ```
-
-The active device checkout, ECU firmware, Panda safety and V5.0 branch are
-unchanged by the commits on `v6.0`.
