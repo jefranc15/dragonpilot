@@ -249,6 +249,9 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertEqual(self.ctrl.sng_calls, 0)
 
   def test_brake_scales_after_1216_with_stock_gentle_step(self):
+    # A normal nonurgent demand large enough to reach the slew limit.
+    self.plan.brake = .60
+    self.plan.accel = -.60
     self.tick(5)
     self.assertAlmostEqual(self.ctrl.apply_brake, .08, places=6)
     self.tick(10)
