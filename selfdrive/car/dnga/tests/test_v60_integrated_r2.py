@@ -366,6 +366,59 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertEqual(self.ctrl.sng_calls, 1)
     self.assertAlmostEqual(self.ctrl.apply_brake, .30)
 
+  def test_no_hydraulic_or_r2_gap_from_unauthorized_e2e_decel(self):
+    # A negative planner acceleration is not sufficient authority.
+    # This safeguard protects against the historical unexpected braking.
+    self.plan.source = "e2e"
+    self.plan.has_lead = False
+    self.plan.brake = .45
+    self.plan.accel = -.45
+    self.lead.relevant = False
+    self.lead.status = False
+    req = self.tick(5, pid=-.5)
+    self.assertFalse(req.hydraulic)
+    self.assertFalse(req.release_pump)
+    cmd = self.ctrl._build_command(
+      self.cs, 5, self.session, self.plan, self.lead,
+      BrakeRequest(False, False, False, state=0x01), None)
+    self.assertEqual(self.ctrl.r2_gap_kph, 0.0)
+    self.assertEqual(cmd.speed, self.cs.out.vEgo)
+
+  def test_new_brake_event_sets_coordinated_decel_and_below_speed(self):
+    req = self.tick(5)
+    self.assertTrue(req.hydraulic)
+    cmd = self.ctrl._build_command(
+      self.cs, 5, self.session, self.plan, self.lead,
+      BrakeRequest(True, False, False, state=0x21), None)
+    self.assertAlmostEqual(self.ctrl.apply_brake, .08)
+    self.assertLess(cmd.speed, self.cs.out.vEgo)
+    self.assertFalse(cmd.is_accel)
+    self.assertTrue(cmd.is_decel)
+
+  def test_r2_release_pump_cannot_set_acceleration_mode(self):
+    self.tick(5)
+    first = self.ctrl._build_command(
+      self.cs, 5, self.session, self.plan, self.lead,
+      BrakeRequest(True, False, False, state=0x21), None)
+    self.assertLess(first.speed, self.cs.out.vEgo)
+    self.plan.brake = 0.0
+    self.plan.accel = 0.0
+    self.plan.lead_lookahead_brake = 0.0
+    request = None
+    for frame in range(10, 110, 5):
+      request = self.tick(frame, pid=0.0)
+      if request.release_pump:
+        break
+    self.assertIsNotNone(request)
+    self.assertTrue(request.release_pump)
+    self.assertFalse(request.hydraulic)
+    cmd = self.ctrl._build_command(
+      self.cs, frame, self.session, self.plan, self.lead,
+      BrakeRequest(False, True, False, state=0x01), None)
+    self.assertLessEqual(cmd.speed, self.cs.out.vEgo)
+    self.assertFalse(cmd.is_accel)
+    self.assertTrue(cmd.is_decel)
+
   def test_pid_positive_does_not_force_coast_with_negative_planner(self):
     self.tick(5)
     req = self.tick(10, pid=.2)
