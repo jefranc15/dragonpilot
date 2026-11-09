@@ -6,6 +6,7 @@ on:
       - v5.1-R2V4-closed-track
       - V5.2-Test
       - V5.2-R2-1216-direct-dev
+      - v6.0
   workflow_dispatch:
 
 jobs:
@@ -19,11 +20,16 @@ jobs:
       - name: Syntax-check controller modules
         run: |
           python -m py_compile selfdrive/car/dnga/carcontroller.py
+          python -m py_compile selfdrive/car/dnga/longitudinal.py
+          python -m py_compile selfdrive/car/dnga/longitudinal_v50_legacy.py
           python -m py_compile selfdrive/car/dnga/r2_v4_shadow_controller.py
           python -m py_compile selfdrive/car/dnga/r2_v4_experimental_actuator.py
           python -m py_compile selfdrive/car/dnga/r2_v4_direct_authority.py
           python -m py_compile selfdrive/car/dnga/tests/test_r2_v4_transition_can_integration.py
-      - name: R2 V4 pure-logic tests (no compiled cereal/capnp on host)
+      - name: v6 integrated R2 tests (no compiled cereal/capnp)
+        run: |
+          python selfdrive/car/dnga/tests/test_v60_integrated_r2.py -v
+      - name: R2 V4 pure-logic tests (legacy CI contract)
         run: |
           python - <<'PY'
           import sys
