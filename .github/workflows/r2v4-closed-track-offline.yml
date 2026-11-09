@@ -47,6 +47,7 @@ jobs:
               "test_r2_v4_shadow_controller.py",
               "test_r2_v4_experimental_actuator.py",
               "test_r2_v4_direct_authority.py",
+              "test_r2_v4_direct_integration_contract.py",
           ):
               suite.addTests(loader.discover("selfdrive/car/dnga/tests", pattern=pattern))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
