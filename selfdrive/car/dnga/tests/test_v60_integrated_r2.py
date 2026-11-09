@@ -40,6 +40,9 @@ P = SimpleNamespace(
   PID_BRAKE_ALLOWANCE=0.08,
   PID_BRAKE_BLEND=0.25,
   URGENT_HARD_DECEL=0.7,
+  URGENT_PLANNER_DECEL=0.45,
+  PREDICTIVE_INITIAL_BRAKE=0.16,
+  STOCK_SMOOTH_ENTRY_MAX=0.12,
   EMERGENCY_CLOSING_SPEED=2.0,
   EMERGENCY_TTC=8.0,
   EMERGENCY_PLANNER_BRAKE=0.2,
@@ -274,13 +277,57 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertGreaterEqual(self.module.r2_acc_gap_kph(120.0, .2), 0.0)
     self.assertLessEqual(self.module.r2_acc_gap_kph(120.0, .9), 10.7)
 
-  def test_urgent_braking_uses_v50_urgent_ramp(self):
+  def test_urgent_braking_uses_bounded_first_entry_and_v50_urgent_ramp(self):
     self.lead.urgent = True
     self.plan.brake = .60
+    self.plan.accel = -.60
     self.tick(5)
+    # A confirmed lead with strong planner demand gets the historical
+    # stock-smooth entry ceiling instead of the ordinary 0.08 floor.
+    self.assertAlmostEqual(self.ctrl.apply_brake, .12, places=6)
     self.tick(10)
-    # Urgent V5 step +0.015 is not replaced by comfort-only logic.
-    self.assertAlmostEqual(self.ctrl.apply_brake, .095, places=6)
+    # Urgent V5 rate +0.015 (50 ms) is not replaced by comfort-only logic.
+    self.assertAlmostEqual(self.ctrl.apply_brake, .135, places=6)
+
+  def test_emergency_first_entry_is_demand_aware_and_bounded(self):
+    self.lead.urgent = True
+    self.lead.closing_speed = 3.0
+    self.lead.ttc = 3.0
+    self.plan.brake = .8
+    self.plan.accel = -.8
+    req = self.tick(5, pid=-.8)
+    self.assertTrue(req.hydraulic)
+    # Reuse the inherited predictive entry ceiling, not an uncontrolled jump.
+    self.assertAlmostEqual(self.ctrl.apply_brake, .16, places=6)
+    self.tick(10, pid=-.8)
+    self.assertGreater(self.ctrl.apply_brake, .16)
+    self.assertLessEqual(self.ctrl.apply_brake, .19)
+
+  def test_urgent_classification_without_authorized_lead_cannot_brake(self):
+    self.plan.brake = .9
+    self.plan.accel = -.9
+    self.lead.urgent = True
+    self.lead.status = True
+    self.lead.relevant = False
+    self.lead.closing_speed = 4.0
+    self.lead.ttc = 2.0
+    req = self.tick(5, pid=-.9)
+    self.assertFalse(req.hydraulic)
+    self.assertAlmostEqual(self.ctrl.apply_brake, 0.0)
+
+  def test_urgent_turn_does_not_bypass_curve_envelope(self):
+    self.plan.has_lead = False
+    self.plan.source = "turn"
+    self.plan.curve_active = True
+    self.plan.turn_speed = 15.0
+    self.plan.brake = .8
+    self.plan.accel = -.8
+    self.lead.relevant = False
+    self.lead.status = False
+    self.lead.urgent = False
+    req = self.tick(5, pid=-.8)
+    self.assertTrue(req.hydraulic)
+    self.assertAlmostEqual(self.ctrl.apply_brake, .08)
 
   def test_brake_strength_respects_v50_highway_cap(self):
     self.cs.out.vEgo = 25.0
@@ -394,6 +441,24 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertLess(cmd.speed, self.cs.out.vEgo)
     self.assertFalse(cmd.is_accel)
     self.assertTrue(cmd.is_decel)
+
+  def test_moving_ready_release_is_16_acc_updates_only(self):
+    self.assertEqual(self.module.R2_RELEASE_FRAMES, 80)
+    self.tick(5)
+    self.plan.brake = 0.0
+    self.plan.accel = 0.0
+    self.plan.lead_lookahead_brake = 0.0
+    for frame in range(10, 60, 5):
+      req = self.tick(frame, pid=0.0)
+    self.assertTrue(req.release_pump)
+    self.assertEqual(self.ctrl.r2_release_until_frame, 135)
+    for frame in range(60, 135, 5):
+      req = self.tick(frame, pid=0.0)
+      self.assertTrue(req.release_pump)
+      self.assertFalse(req.hydraulic)
+    req = self.tick(135, pid=0.0)
+    self.assertFalse(req.release_pump)
+    self.assertFalse(req.hydraulic)
 
   def test_r2_release_pump_cannot_set_acceleration_mode(self):
     self.tick(5)
