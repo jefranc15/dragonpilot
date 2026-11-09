@@ -157,5 +157,99 @@ class TestV60IntegratedR2(unittest.TestCase):
     self.assertIs(opts["V6_R2_ACTIVE_CAN"], False)
 
 
+  def test_carcontroller_r2_connected_to_0x271_and_0x273_packer(self):
+    """Exercise the real v6 controller selection and BOTH packer call sites.
+
+    The packer is an offline recorder, not a real Panda/DBC/vehicle ECU.
+    """
+    import types
+    class Params:
+      STEER_STEP = 2
+      ACC_STEP = 5
+      def __init__(self, CP):
+        self.STEER_BP = [0.0, 40.0]
+        self.STEER_LIM_TORQ = [255.0, 255.0]
+        self.STEER_DELTA_UP = 22
+        self.STEER_DELTA_DOWN = 35
+
+    stubs = {}
+    for name in ("common", "common.numpy_fast", "opendbc", "opendbc.can",
+                 "opendbc.can.packer", "selfdrive", "selfdrive.car",
+                 "selfdrive.car.dnga", "selfdrive.car.dnga.dngacan",
+                 "selfdrive.car.dnga.longitudinal",
+                 "selfdrive.car.dnga.longitudinal_kinematic_guard",
+                 "selfdrive.car.dnga.values",
+                 "selfdrive.car.dnga.dnga_hybrid_feedback"):
+      obj = ModuleType(name)
+      obj.__path__ = []
+      stubs[name] = obj
+
+    stubs["common.numpy_fast"].clip = lambda v, lo, hi: max(lo, min(hi, v))
+    stubs["common.numpy_fast"].interp = lambda v, bp, vals: vals[0]
+    stubs["opendbc.can.packer"].CANPacker = lambda dbc: object()
+    stubs["selfdrive.car"].make_can_msg = lambda *a: ("misc", a)
+    stubs["selfdrive.car.dnga.longitudinal"].LongitudinalController = self.module.LongitudinalController
+    stubs["selfdrive.car.dnga.longitudinal_kinematic_guard"].LongitudinalController = FakeLegacyLongitudinal
+    stubs["selfdrive.car.dnga.dnga_hybrid_feedback"].hybrid_feedback_snapshot = lambda cs, f: {"fresh": True}
+    stubs["selfdrive.car.dnga.dnga_hybrid_feedback"].hybrid_brake_feedback_state = lambda x: (True, False)
+    stubs["selfdrive.car.dnga.values"].BrakeState = SimpleNamespace(
+      READY=1, BRAKING=0x21, CREEPING=0x31, HOLD=0x30)
+    stubs["selfdrive.car.dnga.values"].CarControllerParams = Params
+    stubs["selfdrive.car.dnga.values"].DBC = {"TEST": {"pt": "dbc"}}
+    can = stubs["selfdrive.car.dnga.dngacan"]
+    can.create_can_steer_command = lambda *a: ("steer", a)
+    can.dnga_create_accel_command = lambda packer, set_speed, available, enabled, lead, speed, is_accel, is_decel, dist: (
+      "0x273", speed, is_accel, is_decel)
+    can.dnga_create_brake_command = lambda packer, state, pump, magnitude, counter: (
+      "0x271", state, pump, magnitude)
+    can.dnga_create_hud = lambda *a: ("hud", a)
+
+    state = self.cs
+    state.out.cruiseState.available = True
+    state.out.leftBlinker = False
+    state.out.rightBlinker = False
+    state.out.steeringTorqueEps = 0.0
+    state.out.steeringPressed = False
+    state.lkas_latch = True
+    state.cruise_speed = 20.0
+    state.op_distance_val = 1
+    state.stock_fcw = False
+    state.stock_aeb = False
+    state.stock_adas_frontDepartureHUD = False
+    state.stock_lkc_off = False
+    state.stock_fcw_off = False
+
+    class Actuators:
+      steer = 0.0
+      accel = -0.20
+      def copy(self):
+        return Actuators()
+
+    with patch.dict(sys.modules, stubs):
+      spec = util.spec_from_file_location("v60_can_integration_fixture", CONTROLLER)
+      module = util.module_from_spec(spec)
+      sys.modules[spec.name] = module
+      try:
+        spec.loader.exec_module(module)
+        # Fixture-only active selection: never modifies the actual repo flag.
+        module.V6_R2_ACTIVE_CAN = True
+        params = SimpleNamespace(
+          carFingerprint="TEST",
+          lateralParams=SimpleNamespace(torqueBP=[0, 40],
+                                        torqueV=[255, 255]))
+        cc = module.CarController("dbc", params, None)
+        _, sent = cc.update(
+          True, True, state, 5, Actuators(), False,
+          None, False, False, False, False, False, None,
+        )
+        commands = {c[0]: c for c in sent}
+        self.assertEqual(commands["0x271"][1:], (0x21, -0.4, 1216))
+        self.assertTrue(commands["0x273"][3])
+        self.assertFalse(commands["0x273"][2])
+        self.assertLess(commands["0x273"][1], state.out.vEgo)
+      finally:
+        sys.modules.pop(spec.name, None)
+
+
 if __name__ == "__main__":
   unittest.main()
