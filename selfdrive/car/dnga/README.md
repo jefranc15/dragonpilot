@@ -39,17 +39,20 @@ Their history is available from V5.2 branches.
 4. On the first ordinary moving BRAKING request, `apply_brake = 0.08`
    encodes with the ORIGINAL V5.0 `encode_hev_brake` to
    `BRAKE_STATE=0x21, MAGNITUDE=1216, PUMP=-0.4`.
-5. The NEXT updates call the inherited `_apply_brake_target`:
-   V5.0 filter up/down (0.08), normal step +0.006/20 Hz,
-   urgent step +0.015/20 Hz, emergency +0.03/20 Hz,
-   release step -0.015/20 Hz. V5.0 cap functions determine
-   the maximum from road speed, distance setting, curve and urgency.
-   The first magnitude is **not** a fixed braking magnitude.
-6. During R2 moving BRAKING the lower 0x273 `ACC_CMD` is derived from
-   the current encoded brake strength and an empirical stock command
-   relationship, slewed by +0.18/-0.35 km/h per 20 Hz control update.
-   The final R2 interlock preserves the below-vEgo target. No direct
-   motor torque/regenerative current control is asserted or proved.
+5. The NEXT updates call the original V5.0 `_apply_brake_target`
+   filter (0.08) and speed/lead/curve caps, then use a *normal-only*
+   comfort rise of up to +0.015 per 20 Hz update. This is 75% of the
+   median +0.020 per 50 ms increase observed in factory braking.
+   V5.0 urgent (+0.015), emergency (+0.030), and physical
+   deceleration-governor paths remain unattenuated. Release continues
+   with V5.0's -0.015 step; the first magnitude is not fixed.
+6. During R2 moving BRAKING, the lower 0x273 `ACC_CMD` is based on
+   the newly fitted stock gap (-0.3159 + 7.0102 * strength +
+   0.03394 * speed_kph), reduced to **85%** for normal comfort
+   braking, not for urgency. Target slewing remains +0.18/-0.35
+   km/h per 20 Hz update. No direct motor torque/regenerative
+   current control is asserted or proved. See
+   `docs/dnga_v60_stock_acc_comfort_fit.md` for data and limitations.
 7. Normal moving release ramps brake strength down with the V5.0
    release rate/confirmation, then proposes a 24-update
    READY/1224/-0.4 phase. This release hypothesis remains UNVALIDATED
