@@ -1,0 +1,23 @@
+name: v6.0 live-actuation readiness audit (must pass before activation)
+
+on:
+  push:
+    branches:
+      - v6.0-live-readiness-audit
+  workflow_dispatch:
+
+jobs:
+  offline-risk-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Compile active controller and audit harness
+        run: |
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          python -m py_compile selfdrive/car/dnga/longitudinal.py
+          python -m py_compile selfdrive/car/dnga/tests/v60_live_readiness_audit.py
+      - name: Evaluate R2 live readiness blockers (non-actuating)
+        run: python selfdrive/car/dnga/tests/v60_live_readiness_audit.py
