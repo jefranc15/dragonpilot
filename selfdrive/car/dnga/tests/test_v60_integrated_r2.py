@@ -425,10 +425,13 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertTrue(req.hydraulic)
     self.assertEqual(self.ctrl.r2_authority, "r2_braking")
 
-  def test_gate_remains_off_in_carcontroller(self):
+  def test_one_controller_and_interlock_are_kept(self):
     src = CONTROLLER.read_text()
-    self.assertIn("V6_R2_ACTIVE_CAN = False", src)
+    # Both local circuit settings (True or False) may run offline regressions;
+    # CI does not silently change or override the actual live CAN selector.
+    self.assertIn("R2LongitudinalController() if V6_R2_ACTIVE_CAN else V50LongitudinalController()", src)
     self.assertEqual(src.count("self.longitudinal.update("), 1)
+    self.assertIn("self._apply_brake_propulsion_interlock(command, CS, frame)", src)
     self.assertNotIn("r2_v4_shadow", src)
 
   def test_single_state_machine_not_second_low_speed_instance(self):
