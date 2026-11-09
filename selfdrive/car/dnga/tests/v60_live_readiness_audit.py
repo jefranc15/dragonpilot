@@ -31,11 +31,11 @@ def evaluate():
   fixture.TestV60IntegratedR2.setUpClass()
   results = {}
   ctrl, cs = setup()
-  ctrl.update(True, cs, 5, -0.20, False, False)
-  output = ctrl.update(True, cs, 10, -0.20, False, False)
+  first = ctrl.update(True, cs, 5, -0.20, False, False)
   results["baseline_1216_entry"] = {
-    "observed": 1216,
-    "pass": ctrl.last_authority == "r2_braking",
+    "observed": first.magnitude,
+    "pass": ctrl.last_authority == "r2_braking" and first.magnitude == 1216
+            and first.speed < cs.out.vEgo,
     "detail": "Existing isolated integration tests verify first magnitude is 1216 and ACC target below vEgo",
   }
 
