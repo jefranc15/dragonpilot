@@ -427,12 +427,92 @@ class V60V50ScalingTests(unittest.TestCase):
 
   def test_one_controller_and_interlock_are_kept(self):
     src = CONTROLLER.read_text()
-    # Both local circuit settings (True or False) may run offline regressions;
-    # CI does not silently change or override the actual live CAN selector.
-    self.assertIn("R2LongitudinalController() if V6_R2_ACTIVE_CAN else V50LongitudinalController()", src)
+    self.assertIn("self.longitudinal = LongitudinalController()", src)
+    self.assertNotIn("V6_R2_ACTIVE_CAN", src)
+    self.assertNotIn("V50LongitudinalController()", src)
+    self.assertNotIn("R2LongitudinalController()", src)
     self.assertEqual(src.count("self.longitudinal.update("), 1)
     self.assertIn("self._apply_brake_propulsion_interlock(command, CS, frame)", src)
     self.assertNotIn("r2_v4_shadow", src)
+
+  def _real_interlock(self, command, *, v_ego=None, frame=5, fresh=True, physical=False):
+    # Extract the actual CarController interlock rather than emulating it.
+    tree = ast.parse(CONTROLLER.read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+               and n.name == "CarController")
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef)
+                  and n.name == "_apply_brake_propulsion_interlock")
+    namespace = {
+      "R2_MOVING_MIN_SPEED": self.module.R2_MOVING_MIN_SPEED,
+      "BrakeState": SimpleNamespace(HOLD=0x30, BRAKING=0x21, CREEPING=0x31),
+      "hybrid_feedback_snapshot": lambda cs, fr: {},
+      "hybrid_brake_feedback_state": lambda snapshot: (fresh, physical),
+    }
+    exec(compile(ast.Module(body=[method], type_ignores=[]),
+                 str(CONTROLLER), "exec"), namespace)
+    out = SimpleNamespace(
+      vEgo=self.cs.out.vEgo if v_ego is None else v_ego,
+      standstill=self.cs.out.standstill,
+    )
+    fake_car = SimpleNamespace(longitudinal=self.ctrl)
+    return namespace["_apply_brake_propulsion_interlock"](
+      fake_car, command, SimpleNamespace(out=out), frame)
+
+  def test_integrated_interlock_preserves_moving_lower_acc_cmd(self):
+    self.tick(5)
+    cmd = Command(speed=19.8, brake_state=0x21, pump=-.4,
+                  is_accel=True, is_decel=False)
+    result = self._real_interlock(cmd)
+    self.assertAlmostEqual(result.speed, 19.8)
+    self.assertFalse(result.is_accel)
+    self.assertTrue(result.is_decel)
+
+  def test_integrated_interlock_preserves_historical_low_speed_sng(self):
+    self.cs.out.vEgo = 4.0
+    self.ctrl.r2_moving = False
+    self.ctrl.r2_release_until_frame = 0
+    self.ctrl.speed_offset = -.1
+    cmd = Command(speed=3.5, brake_state=0x31, pump=-.4,
+                  is_accel=True, is_decel=False)
+    result = self._real_interlock(cmd, frame=10)
+    self.assertAlmostEqual(result.speed, 4.0)
+    self.assertEqual(self.ctrl.speed_offset, 0.0)
+    self.assertFalse(result.is_accel)
+    self.assertTrue(result.is_decel)
+
+  def test_integrated_interlock_preserves_moving_release_gap(self):
+    self.tick(5)
+    self.ctrl.r2_moving = False
+    self.ctrl.r2_release_until_frame = 150
+    cmd = Command(speed=19.7, brake_state=0x01, pump=-.4,
+                  is_accel=True, is_decel=False)
+    result = self._real_interlock(cmd, frame=25)
+    self.assertAlmostEqual(result.speed, 19.7)
+    self.assertFalse(result.is_accel)
+    self.assertTrue(result.is_decel)
+
+  def test_integrated_interlock_neutralizes_postrelease_handoff(self):
+    self.tick(5)
+    self.ctrl.r2_moving = False
+    self.ctrl.r2_release_until_frame = 100
+    self.ctrl.handoff_pending = True
+    cmd = Command(speed=20.5, brake_state=0x01, pump=0.,
+                  is_accel=True, is_decel=False)
+    result = self._real_interlock(cmd, frame=105)
+    self.assertEqual(result.speed, self.cs.out.vEgo)
+    self.assertFalse(result.is_accel)
+    self.assertFalse(result.is_decel)
+
+  def test_integrated_interlock_feedback_veto_after_release(self):
+    self.ctrl.r2_moving = False
+    self.ctrl.r2_release_until_frame = 0
+    cmd = Command(speed=20.5, brake_state=0x01, pump=0.,
+                  is_accel=True, is_decel=False)
+    result = self._real_interlock(cmd, frame=105, physical=True)
+    self.assertTrue(self.ctrl.handoff_pending)
+    self.assertEqual(result.speed, self.cs.out.vEgo)
+    self.assertFalse(result.is_accel)
+    self.assertFalse(result.is_decel)
 
   def test_single_state_machine_not_second_low_speed_instance(self):
     src = LONGITUDINAL.read_text()
