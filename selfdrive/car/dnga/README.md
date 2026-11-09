@@ -1,23 +1,26 @@
 # DNGA Toyota Yaris Cross HEV — v6.0 (R2 on V5.0 scaling)
 
-**Development branch, not road-ready:** R2 live CAN selection is disabled.
-The earlier v6 R2 rewrite used a separate low-speed controller and did not
-preserve the full V5.0 brake scaling. Both issues were corrected.
+**Experimental integration, not road-ready:** one DNGA longitudinal controller
+is selected unconditionally in `carcontroller.py`. The moving-brake behavior
+is experimental and sends live CAN when the vehicle is engaged. The historical
+low-speed stop-and-go/HOLD/CREEPING logic remains inherited, running on the
+SAME instance with its existing state; there is no fallback controller
+selector or second low-speed controller.
 
 ## Normal OpenPilot car port layout
 
 - `carcontroller.py`: steering limits, CAN scheduler, HUD, 0x271/0x273
   encoding call sites and final brake/propulsion veto
-- `longitudinal.py`: **one** V5.0-derived longitudinal state machine.
-  R2 replaces moving-brake/coast-first arbitration, starting at magnitude
-  1216, then uses inherited V5.0 _apply_brake_target filter/ramp, existing
-  speed-dependent caps and measured-deceleration governor.
-  The V5.0 base continues ALL low-speed stop-and-go, HOLD, CREEPING,
-  engagement/lead/feedback and propulsion-state updates in the same object
+- `longitudinal.py`: **one** inherited longitudinal state machine.
+  The moving-brake behavior starts at magnitude 1216, then uses the
+  historical _apply_brake_target filter/ramp, speed-dependent caps
+  and measured-deceleration governor. The inherited low-speed
+  stop-and-go, HOLD, CREEPING, engagement/lead/feedback and
+  propulsion state continues in that same object
 - `longitudinal_v50_legacy.py`, `longitudinal_kinematic_guard.py`,
   `longitudinal_op_only.py`, `longitudinal_atomic_release.py`: the
-  retained original V5.0 state machine/compatibility methods and fallback.
-  They are parents of the R2 controller, **not separate running controllers**
+  retained historical braking/SNG methods in the inheritance chain.
+  These are **not separate running controllers or a runtime fallback**
 - `dnga_hybrid_feedback.py`: read-only 0x275/0x08C feedback and freshness
 - `carstate.py`, `interface.py`, `values.py`, `dngacan.py`,
   `radar_interface.py`: standard port roles; DBC `opendbc/dnga_hev.dbc`
@@ -64,15 +67,24 @@ Their history is available from V5.2 branches.
 
 ## Safety status
 
-`carcontroller.py`: `V6_R2_ACTIVE_CAN = False`.
+`carcontroller.py` constructs only `LongitudinalController()`, imported
+from `longitudinal.py`, without a V5/R2 selector.
 
-- With FALSE (current repo default), CAN output uses the original V5.0
-  longitudinal controller and neutral-vEgo target during its braking.
-  R2 is not executed/shadowed in this mode.
-- With TRUE, the R2 controller would replace normal moving-brake
-  arbitration and change 0x271/0x273 requests. **Do not enable for an
-  engaged public-road drive without verifying a physical safe operating
-  envelope and ECU feedback at every speed.**
+- During authorized **moving braking**, the controller uses experimental
+  progressive 0x271 requests and a lower 0x273 ACC target. The final
+  brake/propulsion interlock retains that lower speed target only in this
+  moving phase, and vetoes positive propulsion while braking.
+- During **low-speed/SNG, HOLD and CREEPING**, it uses historical inherited
+  methods and the old neutral 0x273 hydraulic target. This preserves SNG
+  CAN behavior instead of applying a moving-only interlock to every speed.
+- During **post-release handoff**, it neutralizes both 0x273 mode bits while
+  physical brake feedback or the inherited handoff state blocks acceleration.
+
+**Do not treat this integration as road-ready.** It has not been verified
+against actual ECU response, safe stopping distance, or the earlier RPM-surge
+failure. R2's 24-step READY/-0.4 moving release and first-frame urgent 0.08
+command remain unvalidated. The Panda hook also lacks independent
+command-content and disengagement enforcement.
 
 Passing the isolated tests only demonstrates source-level behavior. It
 does not verify actual DBC packing on the OnePlus 3T, Panda safety,
