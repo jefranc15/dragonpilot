@@ -24,6 +24,22 @@ R2_RELEASE_FRAMES = 120                     # 24 x 20 Hz READY frames (not valid
 R2_TARGET_GAP_MAX_KPH = 10.7
 R2_GAP_STEP_UP_KPH = 0.18
 R2_GAP_STEP_DOWN_KPH = 0.35
+# Fitted to checksum-valid OEM bus-2 0x271/0x273 and CarState observations.
+# 1,047 BRAKING frames (8 Nov + 4 older rlogs), 8-80 km/h, 0.08-0.87
+# encoded strength. Mean absolute OEM ACC gap fit error: ~0.221 km/h.
+R2_STOCK_GAP_INTERCEPT = -0.31592604
+R2_STOCK_GAP_STRENGTH = 7.01016383
+R2_STOCK_GAP_SPEED = 0.03393986
+R2_STOCK_GAP_MIN_SPEED_KPH = 8.0
+R2_STOCK_GAP_MAX_SPEED_KPH = 80.0
+# Gentler normal mode: 85% of the OEM commanded speed offset.
+# Preserve the full fitted offset for urgent/critical braking.
+R2_COMFORT_GAP_FACTOR = 0.85
+# On positive OEM 0x271 strength changes, median step was 0.02 per
+# 50-ms message. Use 75% of that (+0.015) for R2 normal comfort ramps.
+# Original V5.0 filter, governor, caps and urgent escalation remain in force.
+R2_STOCK_NORMAL_STEP = 0.020
+R2_COMFORT_NORMAL_STEP = 0.75 * R2_STOCK_NORMAL_STEP
 
 
 def r2_brake_cap(v_ego, *, curve, urgent, guard_active, lead_cap):
@@ -39,10 +55,28 @@ def r2_brake_cap(v_ego, *, curve, urgent, guard_active, lead_cap):
   return min(cap, low_speed_brake_cap(v_ego), high_speed_brake_cap(v_ego))
 
 
-def r2_acc_gap_kph(v_kph, brake_strength):
-  """Empirical factory *command* relationship, not physical regen torque."""
+def r2_stock_acc_gap_kph(v_kph, brake_strength):
+  """OEM command fit; not actual braking acceleration or regen torque.
+
+  Use only the sampled speed/strength envelope; clamp rather than extrapolate.
+  No new hydraulic authority or physical-response estimate is inferred.
+  """
+  v_kph = max(0.0, float(v_kph))
+  if v_kph <= 0.0:
+    return 0.0
+  fit_speed = clip(v_kph, R2_STOCK_GAP_MIN_SPEED_KPH, R2_STOCK_GAP_MAX_SPEED_KPH)
+  fit_strength = clip(float(brake_strength), 0.08, P.STOP_BRAKE_MAX)
   return max(0.0, min(v_kph, R2_TARGET_GAP_MAX_KPH,
-                      -0.23432350383566514 + 6.72517749 * brake_strength + 0.03370613 * v_kph))
+                      R2_STOCK_GAP_INTERCEPT +
+                      R2_STOCK_GAP_STRENGTH * fit_strength +
+                      R2_STOCK_GAP_SPEED * fit_speed))
+
+
+def r2_acc_gap_kph(v_kph, brake_strength, urgent=False):
+  """Milder normal 0x273 target; never attenuate urgent/critical cases."""
+  oem_gap = r2_stock_acc_gap_kph(v_kph, brake_strength)
+  factor = 1.0 if urgent else R2_COMFORT_GAP_FACTOR
+  return max(0.0, min(float(v_kph), R2_TARGET_GAP_MAX_KPH, factor * oem_gap))
 
 
 class LongitudinalController(V50LongitudinalController):
@@ -159,10 +193,27 @@ class LongitudinalController(V50LongitudinalController):
         brake_floor = R2_FIRST_BRAKE
         requested = float(clip(max(demand, guard.request if guard.active else 0.0) *
                                scale, brake_floor, max(brake_floor, cap)))
+        previous_brake = self.apply_brake
         self._apply_brake_target(
           requested, brake_floor, max(brake_floor, cap),
           emergency, critical, guard,
         )
+        # The V5.0 filtered target and speed/lead caps still decide HOW MUCH
+        # braking is justified. Only the normal positive slew is reshaped:
+        # OEM median positive delta 0.020/50ms, comfort delta 0.015/50ms.
+        # Do not bypass the measured-deceleration governor, stop guard,
+        # urgent/emergency ramps or the original downward slew.
+        normal_comfort = (
+          not (urgent or emergency or critical or guard.active)
+          and self.filtered_aego > P.DECEL_GOVERNOR_START
+          and self.brake_target > previous_brake
+          and self.apply_brake > previous_brake
+        )
+        if normal_comfort:
+          self.apply_brake = min(
+            max(brake_floor, cap), self.brake_target,
+            previous_brake + R2_COMFORT_NORMAL_STEP,
+          )
       self.r2_moving = True
       self.r2_authority = "r2_braking"
       self.handoff_pending = True
@@ -200,7 +251,8 @@ class LongitudinalController(V50LongitudinalController):
                      (self.r2_moving or (brake.release_pump and frame < self.r2_release_until_frame)))
     if moving_r2:
       v_kph = max(0.0, float(CS.out.vEgo) * 3.6)
-      target = (r2_acc_gap_kph(v_kph, self.apply_brake)
+      target = (r2_acc_gap_kph(v_kph, self.apply_brake,
+                               urgent=bool(self.urgent_brake or lead_state.urgent))
                 if brake.hydraulic else 0.0)
       change = clip(target - self.r2_gap_kph,
                     -R2_GAP_STEP_DOWN_KPH, R2_GAP_STEP_UP_KPH)
