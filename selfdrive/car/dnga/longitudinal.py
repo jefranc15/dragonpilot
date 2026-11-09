@@ -20,7 +20,7 @@ from selfdrive.car.dnga.values import BrakeState, LongitudinalParams as P
 R2_MOVING_MIN_SPEED = P.CURVE_HYDRAULIC_MIN_SPEED  # 5.6 m/s; below this use unmodified V5.0 SNG.
 R2_FIRST_BRAKE = 0.08                        # Initial ordinary BRAKING = 0x04C0 (1216).
 R2_SOURCE_BRIDGE_FRAMES = 50                # Maximum 0.50 s at 100 Hz.
-R2_RELEASE_FRAMES = 120                     # 24 x 20 Hz READY frames (not validated in ECU).
+R2_RELEASE_FRAMES = 80                      # 16 x 20 Hz READY frames (0.8 s; ECU response unvalidated).
 R2_TARGET_GAP_MAX_KPH = 10.7
 R2_GAP_STEP_UP_KPH = 0.18
 R2_GAP_STEP_DOWN_KPH = 0.35
@@ -178,18 +178,28 @@ class LongitudinalController(BaseLongitudinalController):
 
     if need_brake:
       if not self.brake_active:
-        # Only the *first normal active request* must be 1216. Subsequent
-        # strength is computed by V5.0's filters, slew limits and speed caps.
+        # Ordinary moving entry stays gentle. A *trusted, planner-authorized*
+        # urgent lead may start above 0.08 to avoid an under-request on the
+        # first 50 ms CAN frame. Use historical DNGA entry ceilings rather
+        # than an unbounded step; still obey existing speed/lead/curve caps.
         self.brake_active = True
         self.curve_brake_active = bool(curve_allowed and not lead_allowed)
-        self.urgent_brake = urgent
-        self.apply_brake = R2_FIRST_BRAKE
-        self.brake_target = R2_FIRST_BRAKE
+        self.urgent_brake = urgent or emergency
+        entry = R2_FIRST_BRAKE
+        if lead_allowed and (emergency or (urgent and plan.brake >= P.URGENT_PLANNER_DECEL)):
+          cap = r2_brake_cap(v, curve=self.curve_brake_active,
+                             urgent=True, guard_active=guard.active,
+                             lead_cap=lead_cap)
+          scale = interp(v, [0.0, 140.0 * CV.KPH_TO_MS], [1.0, 1.0 / 1.5])
+          ceiling = P.PREDICTIVE_INITIAL_BRAKE if emergency else P.STOCK_SMOOTH_ENTRY_MAX
+          entry = max(R2_FIRST_BRAKE, min(ceiling, cap, demand * scale))
+        self.apply_brake = entry
+        self.brake_target = entry
         self.release_counter = 0
         self.r2_release_until_frame = frame
       else:
         self.curve_brake_active = bool(curve_allowed and not lead_allowed)
-        self.urgent_brake = urgent
+        self.urgent_brake = urgent or emergency
         cap = r2_brake_cap(v, curve=self.curve_brake_active,
                            urgent=urgent or emergency, guard_active=guard.active,
                            lead_cap=lead_cap)
