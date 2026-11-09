@@ -14,7 +14,7 @@ from selfdrive.car.dnga.longitudinal_v50_legacy import (
   high_speed_brake_cap, low_speed_brake_cap, progressive_brake_cap,
   stop_guard_brake_cap,
 )
-from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController as V50LongitudinalController
+from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController as BaseLongitudinalController
 from selfdrive.car.dnga.values import BrakeState, LongitudinalParams as P
 
 R2_MOVING_MIN_SPEED = P.CURVE_HYDRAULIC_MIN_SPEED  # 5.6 m/s; below this use unmodified V5.0 SNG.
@@ -79,8 +79,12 @@ def r2_acc_gap_kph(v_kph, brake_strength, urgent=False):
   return max(0.0, min(float(v_kph), R2_TARGET_GAP_MAX_KPH, factor * oem_gap))
 
 
-class LongitudinalController(V50LongitudinalController):
-  """Replace only normal moving-brake arbitration; preserve one V5.0 SNG state."""
+class LongitudinalController(BaseLongitudinalController):
+  """One DNGA longitudinal instance with inherited historical SNG state.
+
+  Only authorized moving-brake decisions are specialized here; the original
+  low-speed/HOLD/CREEPING methods operate on this same controller object.
+  """
 
   def __init__(self):
     super().__init__()
