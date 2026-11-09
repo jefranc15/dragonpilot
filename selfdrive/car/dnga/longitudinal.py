@@ -1,464 +1,214 @@
-"""R2 planner-derived moving brake decision, integrated in DNGA longitudinal.py.
-The fitted stock CAN relationship is not a validated ECU or motor torque model."""
-from dataclasses import dataclass
-from math import isfinite
+"""DNGA v6.0 R2 moving brake policy, with native V5.0 scaling and SNG.
 
-READY = 0x01
-BRAKING = 0x21
-DISABLED = 0x00
-TRUSTED_SOURCES = ("turn", "lead0", "lead1")
+This is a single stateful controller. It inherits the existing DNGA
+longitudinal session/lead/stop-and-go/handoff handling; only the moving
+hydraulic decision changes. The v5.0 coast-first arbitration is NOT invoked
+while R2 owns moving braking.
 
+OFFLINE VALIDATION ONLY: no guarantee of physical braking, regen, or torque.
+"""
+from common.numpy_fast import clip, interp
+from selfdrive.config import Conversions as CV
+from selfdrive.car.dnga.longitudinal_v50_legacy import (
+  BrakeRequest, curve_brake_cap, distance_profile,
+  high_speed_brake_cap, low_speed_brake_cap, progressive_brake_cap,
+  stop_guard_brake_cap,
+)
+from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController as V50LongitudinalController
+from selfdrive.car.dnga.values import BrakeState, LongitudinalParams as P
 
-@dataclass(frozen=True)
-class R2Proposal:
-  brake_state: int
-  pump: float
-  magnitude: int
-  target_kph: float
-  is_decel: bool
-  is_accel: bool
-  requested_brake: float
-  target_gap_kph: float
-  source_bridge: bool
-  early_preview: bool
-  outside_stock_calibration: bool
-  missing_275_response: bool
-  feedback_clear_count: int
-  release_frames_left: int
-  reason: str
+R2_MOVING_MIN_SPEED = P.CURVE_HYDRAULIC_MIN_SPEED  # 5.6 m/s; below this use unmodified V5.0 SNG.
+R2_FIRST_BRAKE = 0.08                        # Initial ordinary BRAKING = 0x04C0 (1216).
+R2_SOURCE_BRIDGE_FRAMES = 50                # Maximum 0.50 s at 100 Hz.
+R2_RELEASE_FRAMES = 120                     # 24 x 20 Hz READY frames (not validated in ECU).
+R2_TARGET_GAP_MAX_KPH = 10.7
+R2_GAP_STEP_UP_KPH = 0.18
+R2_GAP_STEP_DOWN_KPH = 0.35
 
 
-class R2BrakePolicy:
-  """Planner-driven 20 Hz state machine for moving brake requests."""
+def r2_brake_cap(v_ego, *, curve, urgent, guard_active, lead_cap):
+  """Reuse the V5.0 speed/lead/curve/stop-guard braking envelopes."""
+  if curve:
+    return curve_brake_cap(v_ego)
+  if guard_active:
+    return stop_guard_brake_cap(v_ego)
+  if urgent:
+    return min(P.STOP_BRAKE_MAX, P.URGENT_BRAKE_MAX,
+               low_speed_brake_cap(v_ego), high_speed_brake_cap(v_ego))
+  cap = min(lead_cap, progressive_brake_cap(v_ego)) if v_ego >= P.HIGHWAY_MIN_SPEED else lead_cap
+  return min(cap, low_speed_brake_cap(v_ego), high_speed_brake_cap(v_ego))
+
+
+def r2_acc_gap_kph(v_kph, brake_strength):
+  """Empirical factory *command* relationship, not physical regen torque."""
+  return max(0.0, min(v_kph, R2_TARGET_GAP_MAX_KPH,
+                      -0.23432350383566514 + 6.72517749 * brake_strength + 0.03370613 * v_kph))
+
+
+class LongitudinalController(V50LongitudinalController):
+  """Replace only normal moving-brake arbitration; preserve one V5.0 SNG state."""
+
   def __init__(self):
-    self.reset()
+    super().__init__()
 
-  def reset(self):
-    self.gap_kph = 0.0
-    self.last_frame = None
-    self.last_braking = False
-    self.last_trusted = False
-    self.release_frames = 0
-    self.clear_frames = 0
-    self.last_feedback_seq = None
-    self.no_response_frames = 0
+  def _reset(self, frame, a_ego):
+    super()._reset(frame, a_ego)
+    self.r2_moving = False
+    self.r2_release_until_frame = frame
+    self.r2_gap_kph = 0.0
+    self.r2_bridge_since_frame = -1000000
+    self.r2_last_authorized_source = ""
+    self.r2_last_turn_speed = 0.0
+    self.r2_authority = "legacy"
 
-  def step(self, *, frame, v_ego_mps, planned_accel, preview_accel,
-           downstream_pid, measured_accel, source, has_lead, enabled,
-           driver_override=False, feedback_275=None, friction_08c=None,
-           feedback_fresh=False, feedback_sequence=None,
-           positive_accel_permitted=False, urgent=False):
-    vals = (v_ego_mps, planned_accel, preview_accel, downstream_pid, measured_accel)
-    if not all(isfinite(float(v)) for v in vals) or v_ego_mps < 0:
-      raise ValueError("invalid R2V4 observation inputs")
-    frame = int(frame)
-    source = str(source).lower().split(".")[-1]
-    v_kph = float(v_ego_mps) * 3.6
-    contiguous = (self.last_frame is not None and 0 < frame - self.last_frame <= 15)
-    direct = bool(enabled and not driver_override and (has_lead or source in TRUSTED_SOURCES))
-    agreement = planned_accel <= -0.14 and downstream_pid <= -0.05
-    not_overbraking = measured_accel >= planned_accel - 0.18
-    bridge = bool(enabled and not driver_override and not direct and
-                  source == "cruise" and contiguous and self.last_braking and
-                  self.last_trusted and agreement and not_overbraking)
-    authorized = direct or bridge
+  def _update_hydraulic(self, CS, frame, session, apply_accel, plan, lead_state):
+    v = max(0.0, float(CS.out.vEgo))
+    # All V5.0 SNG, CREEPING, HOLD, and low-speed actuator transitions use
+    # the SAME inherited controller instance and its continuously maintained
+    # lead, brake and hold state. No secondary low-speed controller.
+    sng_domain = bool(v < R2_MOVING_MIN_SPEED or CS.out.standstill or
+                      self.sng_armed or self.stop_hold or self.sng_release_count > 0)
+    if sng_domain or not session.allowed:
+      self.r2_moving = False
+      self.r2_authority = "v50_sng_or_inactive"
+      self.r2_bridge_since_frame = -1000000
+      self.r2_release_until_frame = frame
+      self.r2_gap_kph = 0.0
+      return super()._update_hydraulic(CS, frame, session, apply_accel, plan, lead_state)
 
-    rx_fresh = bool(feedback_fresh and feedback_275 is not None and friction_08c is not None)
-    new_rx = bool(rx_fresh and feedback_sequence is not None and
-                  feedback_sequence != self.last_feedback_seq)
-    if new_rx:
-      self.last_feedback_seq = feedback_sequence
+    # R2 no longer consults V5.0's moving lead->coast->hydraulic gate, coast
+    # handoff counter, normal reentry timer, or independent R2 shadow object.
+    lead_allowed = bool(lead_state.relevant and lead_state.status and plan.has_lead)
+    curve_allowed = bool(plan.curve_active and
+                         (plan.turn_speed <= 0.0 or
+                          v > plan.turn_speed + P.CURVE_SPEED_ERROR_RELEASE))
+    set_speed_allowed = bool(plan.source == "cruise" and not plan.has_lead and
+                             v > CS.out.cruiseState.speed + P.CRUISE_DECEL_MARGIN)
+    authorized = bool(plan.fresh and (lead_allowed or curve_allowed or set_speed_allowed))
 
-    if not enabled or driver_override:
-      self.reset()
-      return R2Proposal(DISABLED, 0.0, 200, v_kph, False, False,
-                           0.0, 0.0, False, False, False, False,
-                           0, 0, "inactive")
-
-    future_brake = max(0.0, -float(preview_accel)) * 0.55
-    immediate_brake = max(0.0, -float(planned_accel))
-    demand = max(immediate_brake, future_brake) if authorized else 0.0
-    braking = demand > 0.01
-    early = braking and immediate_brake <= 0.01
-    outside = bool(braking and not (7.70522 <= v_kph <= 76.97496
-                                    and 0.08 <= demand <= 1.46))
-
-    if braking:
-      encoded = min(0.87, max(0.08, demand))
-      pump_byte = 5 if encoded >= 0.75 else 4
-      low = max(0, min(255, round(200 - 100 * encoded)))
-      magnitude = (pump_byte << 8) | low
-      pump = -pump_byte / 10.0
-      gap_target = min(v_kph, 10.7, max(
-        0.05, -0.23432350383566514 + 6.72517749 * encoded + 0.03370613 * v_kph
-      ))
-      self.release_frames = 0
-      self.clear_frames = 0
-      if new_rx and int(feedback_275) >= 0:
-        self.no_response_frames += 1
-      elif new_rx:
-        self.no_response_frames = 0
+    bridge = False
+    if authorized:
+      self.r2_bridge_since_frame = -1000000
+      self.r2_last_authorized_source = plan.source
+      if curve_allowed:
+        self.r2_last_turn_speed = plan.turn_speed
+    elif (plan.fresh and self.r2_moving and
+          self.r2_last_authorized_source in ("turn", "lead0", "lead1") and
+          plan.source == "cruise" and
+          plan.brake >= 0.14 and apply_accel <= -0.05 and
+          float(CS.out.aEgo) >= plan.accel - 0.18 and
+          (self.r2_last_authorized_source != "turn" or
+           self.r2_last_turn_speed <= 0.0 or
+           v > self.r2_last_turn_speed + P.CURVE_SPEED_ERROR_RELEASE)):
+      if self.r2_bridge_since_frame < 0:
+        self.r2_bridge_since_frame = frame
+      bridge = frame - self.r2_bridge_since_frame <= R2_SOURCE_BRIDGE_FRAMES
     else:
-      magnitude, pump = 200, 0.0
-      gap_target = 0.0
-      self.no_response_frames = 0
-      if self.last_braking:
-        self.release_frames = 24
-        self.clear_frames = 0
-      if new_rx and int(feedback_275) == 0 and int(friction_08c) == 0:
-        self.clear_frames = min(3, self.clear_frames + 1)
-      else:
-        self.clear_frames = 0
-      if self.release_frames > 0:
-        magnitude, pump = 1224, -0.4
-        self.release_frames -= 1
+      self.r2_bridge_since_frame = -1000000
 
-    # Smooth the *gap*, not the raw speed field; urgent control unvalidated.
-    max_up = 0.60 if urgent else 0.18
-    step = max(-0.35, min(max_up, gap_target - self.gap_kph))
-    self.gap_kph = max(0.0, min(v_kph, self.gap_kph + step))
-
-    surge_veto = bool(downstream_pid < -0.05 or
-                      (measured_accel > 0.25 and downstream_pid < 0.05))
-    accel = bool(not braking and rx_fresh and new_rx and
-                 self.clear_frames >= 3 and self.gap_kph <= 0.05 and
-                 positive_accel_permitted and planned_accel > 0 and not surge_veto)
-    decel = bool(braking or
-                 (not accel and (self.gap_kph > 0.05 or
-                  (rx_fresh and (feedback_275 < 0 or friction_08c > 0)))))
-    self.last_frame = frame
-    self.last_braking = braking
-    self.last_trusted = braking and authorized and (direct or bridge)
-
-    reason = ("planner" if direct and braking else
-              "source_bridge" if bridge and braking else
-              "ready_release" if not braking and magnitude == 1224 else
-              "ready")
-    if not rx_fresh:
-      reason += ":stale_feedback"
-    if outside:
-      reason += ":outside_stock_domain"
-    if self.no_response_frames >= 3:
-      reason += ":missing_275"
-    return R2Proposal(BRAKING if braking else READY, pump, magnitude,
-                         max(0.0, v_kph - self.gap_kph), decel, accel,
-                         demand, self.gap_kph, bridge, early, outside,
-                         self.no_response_frames >= 3, self.clear_frames,
-                         self.release_frames, reason)
-
-
-"""R2 1216-first moving brake command encoding. Not vehicle-validated."""
-from dataclasses import dataclass, replace
-from math import isfinite
-
-
-HOLD = 0x30
-CREEPING = 0x31
-DISABLED = 0x00
-R2_MIN_ENTRY_SPEED_MPS = 5.6
-ENTRY_STRENGTH = 0.08
-NORMAL_STEP = 0.02
-URGENT_STEP = 0.05
-RELEASE_STEP = 0.04
-MAX_STRENGTH = 0.87
-
-
-def strength_of(magnitude):
-  return max(0.0, min(MAX_STRENGTH, (200 - (int(magnitude) & 0xff)) / 100.0))
-
-
-def encode(strength):
-  strength = max(ENTRY_STRENGTH, min(MAX_STRENGTH, float(strength)))
-  pump = 5 if strength >= 0.75 else 4
-  return (pump << 8) | int(round(200 - 100 * strength)), -pump / 10.0
-
-
-@dataclass(frozen=True)
-class R2DirectStatus:
-  authority: str
-  reason: str
-  strength: float
-  expected_275: int
-  feedback_fault: str
-
-
-class R2BrakeActuator:
-  """Twenty-Hz command producer for a separate bench-only integration.
-
-  Its normal moving BRAKING and READY decisions come solely from the V4
-  proposal, never from the V5.0 coast-first handoff. V5.0 still provides
-  low-speed HOLD/CREEPING and urgent fallback. Caller must keep the final
-  positive-acceleration interlock after this stage.
-  """
-
-  def __init__(self):
-    self.reset()
-
-  def reset(self):
-    self.last_strength = 0.0
-    self.owned_braking = False
-    self.in_release = False
-
-  def _status(self, authority, reason, strength=0.0, fault=""):
-    expected = 0
-    if authority == "r2_braking":
-      magnitude, _ = encode(strength)
-      expected = int(round(-20.48 * (200 - (magnitude & 0xff))))
-    return R2DirectStatus(authority, reason, strength, expected, fault)
-
-  def apply(self, base, proposal, *, enabled, speed_mps, override=False,
-            urgent=False, engagement_guard=False, feedback_fresh=False,
-            friction_active=False):
-    # Inactive driver override and unavailable planner remain under the
-    # original controller. Never synthesize a brake on invalid inputs.
-    if (not enabled or override or not base.enabled or
-        base.brake_state == DISABLED):
-      self.reset()
-      return base, self._status("base", "inactive")
-
-    if not isfinite(float(speed_mps)) or speed_mps < 0:
-      self.reset()
-      return base, self._status("base", "invalid_speed")
-
-    if proposal is None or proposal.brake_state not in (BRAKING, READY):
-      self.reset()
-      return base, self._status("base", "invalid_or_stale_plan")
-
-    # Maintain established low-speed/SNG behavior. At a speed-boundary
-    # handoff, only yield while the base controller already has a physical
-    # braking/hold command. Never silently drop an ongoing R2 brake to READY.
-    if base.brake_state in (HOLD, CREEPING):
-      self.reset()
-      return base, self._status("base", "sng")
-
-    if (speed_mps < R2_MIN_ENTRY_SPEED_MPS and not self.owned_braking
-        and not self.in_release):
-      self.reset()
-      return base, self._status("base", "below_entry_speed")
-
-    if (speed_mps < R2_MIN_ENTRY_SPEED_MPS and self.owned_braking
-        and base.brake_state == BRAKING):
-      self.reset()
-      return base, self._status("base", "moving_to_low_speed_braking")
-
-    if engagement_guard and not self.owned_braking:
-      return base, self._status("base", "engagement_guard")
-
-    fault = ""
-    if not feedback_fresh:
-      fault = "stale_brake_feedback"
-    if getattr(proposal, "missing_275_response", False):
-      fault = "no_expected_275_response"
-
-    if proposal.brake_state == BRAKING:
-      target = max(ENTRY_STRENGTH, min(MAX_STRENGTH, strength_of(proposal.magnitude)))
-      # Safety exception: an urgent V5.0 request is not weakened. Ordinary
-      # base brake demand does NOT control the direct R2 decision.
-      emergency_floor = (strength_of(base.magnitude)
-                         if urgent and base.brake_state == BRAKING else 0.0)
-      if not self.owned_braking:
-        strength = max(ENTRY_STRENGTH, emergency_floor)
-      else:
-        step = URGENT_STEP if urgent else NORMAL_STEP
-        strength = max(emergency_floor,
-                       min(target, self.last_strength + step))
-        if strength < self.last_strength:
-          strength = max(strength, self.last_strength - RELEASE_STEP)
-      strength = max(ENTRY_STRENGTH, min(MAX_STRENGTH, strength))
-      magnitude, pump = encode(strength)
-      self.last_strength = strength
-      self.owned_braking = True
-      self.in_release = False
-      output = replace(base, brake_state=BRAKING, pump=pump,
-                       magnitude=magnitude,
-                       speed=min(speed_mps, max(0.0, proposal.target_kph / 3.6)),
-                       is_accel=False, is_decel=True)
-      return output, self._status("r2_braking", "direct_1216_entry_or_ramp",
-                                  strength, fault)
-
-    self.last_strength = 0.0
-    # If V5.0 detected an urgent physical-braking need, don't discard it just
-    # because R2 issued READY. This is an emergency-only fallback.
-    if urgent and base.brake_state == BRAKING:
-      self.owned_braking = False
-      self.in_release = False
-      return base, self._status("base", "urgent_brake_fallback", fault=fault)
-
-    if self.owned_braking:
-      self.owned_braking = False
-      self.in_release = True
-
-    if (self.in_release and proposal.magnitude == 1224 and
-        proposal.pump == -0.4):
-      output = replace(base, brake_state=READY, magnitude=1224, pump=-0.4,
-                       speed=min(speed_mps, max(0.0, proposal.target_kph / 3.6)),
-                       is_accel=False, is_decel=True)
-      return output, self._status("r2_release", "stock_style_ready", fault=fault)
-
-    self.in_release = False
-    # Genuine no-brake demand is READY (not an artificial 1216 request).
-    # Positive propulsion still uses the V5.0 speed shaping, but is gated
-    # by the V4 planner/feedback clearance plus the final interlock.
-    if proposal.target_gap_kph > 0.05:
-      output = replace(base, brake_state=READY, magnitude=200, pump=0.0,
-                       speed=min(speed_mps, max(0.0, proposal.target_kph / 3.6)),
-                       is_accel=False, is_decel=True)
-      return output, self._status("r2_ready", "target_gap_return", fault=fault)
-
-    accel_ok = bool(proposal.is_accel and feedback_fresh and
-                    not friction_active and not fault and base.is_accel)
-    output = replace(base, brake_state=READY, magnitude=200, pump=0.0,
-                     speed=(base.speed if accel_ok else speed_mps),
-                     is_accel=accel_ok, is_decel=False)
-    return output, self._status("r2_ready", "feedback_gated_accel_or_coast",
-                                fault=fault)
-
-
-# DNGA v6.0 longitudinal: one active command producer, R2 for moving,
-# isolated V5.0 compatibility path for low-speed HOLD/CREEPING only.
-# Direct R2 CAN selection remains disabled until verified HIL/ECU response.
-#
-# Existing V5.0 moving-brake coast/hand-off logic does not enter R2's normal
-# moving BRAKING/READY path, and the controller no longer runs a shadow pass.
-from cereal import messaging
-from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal_v50_legacy import LongitudinalCommand
-from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController as V50LowSpeedController
-from selfdrive.car.dnga.values import BrakeState, CarControllerParams
-
-
-
-class LongitudinalController:
-  """Single R2 command producer selected by CarController for bench integration.
-
-  R2 owns 0x271 moving BRAKING/READY and coordinated 0x273 speed targets.
-  An isolated legacy low-speed adapter is preserved for HOLD/CREEPING while
-  reworking stop-and-go. Never use this as a public-road brake controller
-  without hardware-in-the-loop and control-safety verification.
-  """
-  def __init__(self):
-    self.policy = R2BrakePolicy()
-    self.actuator = R2BrakeActuator()
-    self.low_speed = V50LowSpeedController()
-    self.plan_sm = None
-    try:
-      self.plan_sm = messaging.SubMaster(["longitudinalPlan"])
-    except Exception:
-      pass
-    self.plan_frame = -1000000
-    self.plan_source = ""
-    self.plan_accel = 0.0
-    self.preview_accel = 0.0
-    self.plan_has_lead = False
-    self.prev_enabled = False
-    self.last_authority = ""
-    self.last_feedback_fault = ""
-
-  def _read_plan(self, frame):
-    if self.plan_sm is None:
-      return
-    try:
-      self.plan_sm.update(0)
-      if not self.plan_sm.updated["longitudinalPlan"]:
-        return
-      msg = self.plan_sm["longitudinalPlan"]
-      self.plan_source = str(getattr(msg, "longitudinalPlanSource", "")).lower().split(".")[-1]
-      self.plan_has_lead = bool(getattr(msg, "hasLead", False))
-      accels = getattr(msg, "accels", [])
-      if accels:
-        self.plan_accel = 0.7 * float(accels[0]) + 0.3 * float(
-          accels[1] if len(accels) > 1 else accels[0])
-        self.preview_accel = min(float(v) for v in accels[:min(13, len(accels))])
-      else:
-        self.plan_accel = 0.0
-        self.preview_accel = 0.0
-      self.plan_frame = int(frame)
-    except Exception:
-      # A stale plan must never authorize a new R2 braking decision.
-      self.plan_frame = -1000000
-
-  def update(self, enabled, CS, frame, accel, pcm_cancel_cmd, lead):
-    if frame % CarControllerParams.ACC_STEP:
-      return None
-
-    session = bool(enabled and CS.out.cruiseState.enabled and
-                   not pcm_cancel_cmd and not CS.out.brakePressed and
-                   not CS.out.gasPressed)
-    v_ego = max(0.0, float(CS.out.vEgo))
-    self._read_plan(frame)
-
-    if not session:
-      self.policy.reset()
-      self.actuator.reset()
-      self.prev_enabled = False
-      self.last_authority = "inactive"
-      self.last_feedback_fault = ""
-      return LongitudinalCommand(
-        bool(enabled and CS.out.cruiseState.enabled), bool(lead), v_ego,
-        False, False, BrakeState.READY, 0.0, 200,
-      )
-
-    feedback = hybrid_feedback_snapshot(CS, frame)
-    feedback_fresh, physical_braking = hybrid_brake_feedback_state(feedback)
-    plan_fresh = bool(0 <= frame - self.plan_frame <= 25)
-
-    # Historical SNG controller is isolated to the low-speed domain. There is
-    # no concurrent / shadow V5.0 moving-brake command inside the R2 path.
-    # A moving-to-SNG handoff is not yet HIL-validated.
-    if v_ego < 5.6 and not self.actuator.owned_braking and not self.actuator.in_release:
-      self.policy.reset()
-      self.actuator.reset()
-      self.last_authority = "legacy_sng"
-      self.last_feedback_fault = ""
-      return self.low_speed.update(enabled, CS, frame, accel, pcm_cancel_cmd, lead)
-
-    base_accel_agreement = bool(plan_fresh and self.plan_accel > 0.05 and
-                                float(accel) > 0.05 and
-                                feedback_fresh and not physical_braking)
-    base = LongitudinalCommand(
-      True, bool(lead or self.plan_has_lead),
-      v_ego + (min(0.55, max(0.0, self.plan_accel) * 0.35)
-               if base_accel_agreement else 0.0),
-      base_accel_agreement, False, BrakeState.READY, 0.0, 200,
+    urgent = bool(
+      lead_state.urgent or
+      (plan.fresh and plan.brake >= P.URGENT_HARD_DECEL and apply_accel < -0.05)
     )
-    if not plan_fresh:
-      self.policy.reset()
-      self.actuator.reset()
-      self.last_authority = "stale_plan"
-      self.last_feedback_fault = "stale_plan"
-      return LongitudinalCommand(
-        True, bool(lead), v_ego, False, False, BrakeState.READY, 0.0, 200,
-      )
+    emergency = bool(
+      lead_state.status and lead_state.closing_speed >= P.EMERGENCY_CLOSING_SPEED and
+      lead_state.ttc <= P.EMERGENCY_TTC and plan.brake >= P.EMERGENCY_PLANNER_BRAKE
+    )
+    critical = bool(lead_state.status and
+                    lead_state.closing_speed >= P.DECEL_GOVERNOR_CRITICAL_CLOSING and
+                    lead_state.ttc <= P.DECEL_GOVERNOR_CRITICAL_TTC)
 
-    rx275 = int(getattr(CS, "hybrid_feedback_rx_frame_275", -1000000))
-    rx08c = int(getattr(CS, "hybrid_feedback_rx_frame_08c", -1000000))
-    request = self.policy.step(
-      frame=frame, v_ego_mps=v_ego,
-      planned_accel=self.plan_accel, preview_accel=self.preview_accel,
-      downstream_pid=float(accel), measured_accel=float(CS.out.aEgo),
-      source=self.plan_source, has_lead=self.plan_has_lead,
-      enabled=session, driver_override=False,
-      feedback_275=int(getattr(CS, "hybrid_brake_request_raw_275", 0)),
-      friction_08c=int(getattr(CS, "hybrid_friction_raw_08c", 0)),
-      feedback_fresh=feedback_fresh, feedback_sequence=(rx275, rx08c),
-      positive_accel_permitted=base_accel_agreement,
-      urgent=bool(self.plan_accel <= -0.45 and float(accel) <= -0.45),
-    )
-    urgent = bool(self.plan_accel <= -0.45 and float(accel) <= -0.45)
-    output, status = self.actuator.apply(
-      base, request, enabled=session, speed_mps=v_ego,
-      override=False, urgent=urgent, feedback_fresh=feedback_fresh,
-      friction_active=physical_braking,
-    )
-    self.last_authority = status.authority
-    self.last_feedback_fault = status.feedback_fault
-    # Actual transmitted command veto, not a claim of physical brake torque.
-    if output.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING) or output.pump < 0.0:
-      output.is_accel = False
-      output.is_decel = True
-    elif not feedback_fresh or physical_braking:
-      output.is_accel = False
-      output.is_decel = False
-      output.speed = v_ego
-    self.prev_enabled = True
-    return output
+    raw_demand = plan.brake
+    if lead_allowed:
+      # V5.0's bounded lead lookahead remains, with the same closing/TTC gate.
+      if lead_state.closing_speed >= P.LEAD_LOOKAHEAD_MIN_CLOSING and lead_state.ttc <= P.LEAD_LOOKAHEAD_MAX_TTC:
+        raw_demand = max(raw_demand,
+                         min(P.LEAD_LOOKAHEAD_TARGET_CAP, plan.lead_lookahead_brake))
+      if apply_accel < 0.0:
+        pid_extra = max(0.0, -apply_accel - plan.brake)
+        raw_demand += min(P.PID_BRAKE_ALLOWANCE, P.PID_BRAKE_BLEND * pid_extra)
+    demand = raw_demand if authorized or bridge else 0.0
+    need_brake = bool(demand > P.DECEL_DEADBAND)
+
+    # Keep the existing independent low-speed stop-guard tracking current even
+    # during moving R2 operation so the transition into the inherited SNG
+    # regime does not begin with stale geometry counters.
+    self.filtered_aego += P.AEGO_FILTER_ALPHA * (float(CS.out.aEgo) - self.filtered_aego)
+    guard = self._update_stop_guard(CS, frame, plan.brake, True, lead_state)
+    distance_val = int(clip(getattr(CS, "op_distance_val", 1), 0, 2))
+    lead_cap = distance_profile(distance_val)[1]
+
+    if need_brake:
+      if not self.brake_active:
+        # Only the *first normal active request* must be 1216. Subsequent
+        # strength is computed by V5.0's filters, slew limits and speed caps.
+        self.brake_active = True
+        self.curve_brake_active = bool(curve_allowed and not lead_allowed)
+        self.urgent_brake = urgent
+        self.apply_brake = R2_FIRST_BRAKE
+        self.brake_target = R2_FIRST_BRAKE
+        self.release_counter = 0
+        self.r2_release_until_frame = frame
+      else:
+        self.curve_brake_active = bool(curve_allowed and not lead_allowed)
+        self.urgent_brake = urgent
+        cap = r2_brake_cap(v, curve=self.curve_brake_active,
+                           urgent=urgent or emergency, guard_active=guard.active,
+                           lead_cap=lead_cap)
+        scale = interp(v, [0.0, 140.0 * CV.KPH_TO_MS], [1.0, 1.0 / 1.5])
+        brake_floor = R2_FIRST_BRAKE
+        requested = float(clip(max(demand, guard.request if guard.active else 0.0) *
+                               scale, brake_floor, max(brake_floor, cap)))
+        self._apply_brake_target(
+          requested, brake_floor, max(brake_floor, cap),
+          emergency, critical, guard,
+        )
+      self.r2_moving = True
+      self.r2_authority = "r2_braking"
+      self.handoff_pending = True
+      self.handoff_ready_counter = 0
+      self.kinematic_ready_counter = 0
+      return BrakeRequest(True, False, False)
+
+    if self.r2_moving and self.brake_active:
+      # Use the V5.0 physical brake ramp-down instead of an instant 0x271 off.
+      self.release_counter += 1
+      self.apply_brake = max(R2_FIRST_BRAKE, self.apply_brake - P.BRAKE_STEP_DOWN)
+      self.brake_target = R2_FIRST_BRAKE
+      if self.release_counter >= P.RELEASE_CONFIRM_COUNT and self.apply_brake <= R2_FIRST_BRAKE:
+        self._clear_hydraulic(frame, reentry=False)
+        self.r2_moving = False
+        self.r2_release_until_frame = frame + R2_RELEASE_FRAMES
+        self.handoff_pending = True
+        self.handoff_ready_counter = 0
+        self.kinematic_ready_counter = 0
+      else:
+        self.r2_authority = "r2_brake_ramp_down"
+        return BrakeRequest(True, False, False)
+
+    release = bool(frame < self.r2_release_until_frame)
+    self.r2_authority = "r2_ready_release" if release else "r2_ready"
+    return BrakeRequest(False, release, False)
+
+  def _build_command(self, CS, frame, session, plan, lead_state, brake, propulsion):
+    # The base computes ALL existing V5.0 SNG, emergency/session and
+    # positive-accel gating. Only change the ACC_CMD target on R2-owned
+    # moving BRAKING or explicit R2 READY release frames.
+    command = super()._build_command(CS, frame, session, plan, lead_state, brake, propulsion)
+    moving_r2 = bool(session.allowed and not CS.out.standstill and
+                     CS.out.vEgo >= R2_MOVING_MIN_SPEED and
+                     (self.r2_moving or (brake.release_pump and frame < self.r2_release_until_frame)))
+    if moving_r2:
+      v_kph = max(0.0, float(CS.out.vEgo) * 3.6)
+      target = (r2_acc_gap_kph(v_kph, self.apply_brake)
+                if brake.hydraulic else 0.0)
+      change = clip(target - self.r2_gap_kph,
+                    -R2_GAP_STEP_DOWN_KPH, R2_GAP_STEP_UP_KPH)
+      self.r2_gap_kph = clip(self.r2_gap_kph + change, 0.0, v_kph)
+      if command.brake_state == BrakeState.BRAKING or brake.release_pump:
+        command.speed = max(0.0, CS.out.vEgo - self.r2_gap_kph / 3.6)
+        command.is_accel = False
+        command.is_decel = True
+    else:
+      self.r2_gap_kph = 0.0
+    return command
