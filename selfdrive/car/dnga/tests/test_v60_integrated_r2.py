@@ -241,6 +241,7 @@ class V60V50ScalingTests(unittest.TestCase):
     strength = self.ctrl.apply_brake
     self.plan.brake = 0.0
     self.plan.accel = 0.0
+    self.plan.lead_lookahead_brake = 0.0
     self.tick(205, pid=0.1)
     self.assertTrue(self.ctrl.brake_active)
     self.assertAlmostEqual(self.ctrl.apply_brake, max(.08, strength - .015))
