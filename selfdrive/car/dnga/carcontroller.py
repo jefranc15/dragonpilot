@@ -8,13 +8,8 @@ from selfdrive.car.dnga.dngacan import (
   dnga_create_hud,
 )
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal import LongitudinalController as R2LongitudinalController
-from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController as V50LongitudinalController
+from selfdrive.car.dnga.longitudinal import LongitudinalController, R2_MOVING_MIN_SPEED
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
-
-# Deliberately off until HIL and independent brake-response validation.
-# This selector chooses ONE controller, not two concurrent shadow controllers.
-V6_R2_ACTIVE_CAN = False
 
 try:
   from common.features import Features
@@ -56,7 +51,7 @@ class CarController:
     f = Features()
     self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
-    self.longitudinal = (R2LongitudinalController() if V6_R2_ACTIVE_CAN else V50LongitudinalController())
+    self.longitudinal = LongitudinalController()
 
   def _apply_brake_propulsion_interlock(self, command, CS, frame):
     """Final physical-brake acceleration veto for the selected controller.
@@ -67,44 +62,42 @@ class CarController:
     feedback = hybrid_feedback_snapshot(CS, frame)
     fresh, physical_braking = hybrid_brake_feedback_state(feedback)
 
-    if V6_R2_ACTIVE_CAN:
-      # R2 has its own state machine and lower ACC target during hydraulic
-      # braking; never neutralize that target as the legacy interlock does.
-      if command.brake_state == BrakeState.HOLD:
-        return command
-      if command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING) or command.pump < 0.0:
-        command.is_accel = False
-        command.is_decel = True
-      elif not fresh or physical_braking:
-        command.is_accel = False
-        command.is_decel = False
-        command.speed = float(CS.out.vEgo)
-      return command
-
     if command.brake_state == BrakeState.HOLD:
+      # Preserve the inherited confirmed-standstill HOLD mode bits and target.
       return command
 
     hydraulic = command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING)
     release_pump = command.pump < 0.0
 
+    # One controller object retains the historical low-speed SNG logic.
+    # Only its authorized moving-brake/release phase owns a below-vEgo
+    # 0x273 target. All SNG/CREEPING/low-speed commands keep the original
+    # neutral hydraulic target at current speed.
+    moving_brake_phase = (
+      CS.out.vEgo >= R2_MOVING_MIN_SPEED
+      and not CS.out.standstill
+      and not self.longitudinal.sng_armed
+      and not self.longitudinal.stop_hold
+      and self.longitudinal.sng_release_count == 0
+      and (self.longitudinal.r2_moving or frame < self.longitudinal.r2_release_until_frame)
+    )
+
     if physical_braking:
-      # Defense in depth: physical regen/friction can never share an ACCEL
-      # command, even if an upstream handoff transition clears too early.
+      # Brake-specific 0x275 / 0x08C feedback blocks renewed propulsion.
       self.longitudinal.handoff_pending = True
       self.longitudinal.handoff_ready_counter = 0
       self.longitudinal.kinematic_ready_counter = 0
 
     if hydraulic or release_pump:
-      # Commanded 0x271 braking/release keeps DECEL framing, with a neutral
-      # 0x273 target so the powertrain is not asked for extra slowing.
       command.is_accel = False
       command.is_decel = True
-      command.speed = float(CS.out.vEgo)
-      self.longitudinal.speed_offset = 0.0
-    elif physical_braking or self.longitudinal.handoff_pending:
-      # After 0x271 releases, keep the hard accel veto but use true neutral
-      # framing. This allows lingering regen/engine braking to unwind instead
-      # of holding IS_DECEL high.
+      if not moving_brake_phase:
+        # Preserve prior SNG and legacy hydraulic CAN behavior.
+        command.speed = float(CS.out.vEgo)
+        self.longitudinal.speed_offset = 0.0
+    elif not fresh or physical_braking or self.longitudinal.handoff_pending:
+      # After 0x271 releases, neutralize both 0x273 mode bits until the
+      # inherited HEV handoff and brake-feedback gates allow propulsion.
       command.is_accel = False
       command.is_decel = False
       command.speed = float(CS.out.vEgo)
