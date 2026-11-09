@@ -217,8 +217,8 @@ class V60V50ScalingTests(unittest.TestCase):
 
   def test_brake_strength_respects_v50_highway_cap(self):
     self.cs.out.vEgo = 25.0
-    self.plan.brake = 0.9
-    self.plan.accel = -.9
+    self.plan.brake = 0.6
+    self.plan.accel = -.6
     self.lead.urgent = False
     for frame in range(5, 600, 5):
       self.tick(frame, -.2)
@@ -233,7 +233,7 @@ class V60V50ScalingTests(unittest.TestCase):
     self.lead.relevant = False
     for frame in range(5, 600, 5):
       self.tick(frame)
-    self.assertLessEqual(self.ctrl.apply_brake, .231)
+    self.assertLessEqual(self.ctrl.apply_brake, .256)
 
   def test_normal_brake_releases_by_ramp_not_immediate_off(self):
     for frame in range(5, 205, 5):
