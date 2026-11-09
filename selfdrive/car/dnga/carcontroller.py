@@ -10,9 +10,13 @@ from selfdrive.car.dnga.dngacan import (
 from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
 from selfdrive.car.dnga.longitudinal_kinematic_guard import LongitudinalController
 from selfdrive.car.dnga.r2_v4_shadow_controller import R2V4ShadowController
-from selfdrive.car.dnga.r2_v4_experimental_actuator import R2V4ExperimentalActuator
+from selfdrive.car.dnga.r2_v4_direct_authority import R2V4DirectAuthority
 from selfdrive.swaglog import cloudlog
 from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
+
+# BENCH/OFFLINE DEVELOPMENT ONLY. No vehicle-level response validation yet.
+# This branch must not activate unvalidated direct R2 CAN actuation by default.
+R2_V4_DIRECT_CAN_ENABLED = False
 
 try:
   from common.features import Features
@@ -56,7 +60,7 @@ class CarController:
     self.stock_ldw = False
     self.longitudinal = LongitudinalController()
     self.r2_v4_shadow = R2V4ShadowController()  # Proposal generator; no direct CAN
-    self.r2_v4_actuator = R2V4ExperimentalActuator()  # Applied only with engaged OP
+    self.r2_v4_direct = R2V4DirectAuthority()  # Independent moving-brake producer
     self.r2_v4_last = None
     self.r2_v4_shadow_errors = 0
 
@@ -98,6 +102,25 @@ class CarController:
       command.speed = float(CS.out.vEgo)
       self.longitudinal.speed_offset = 0.0
 
+    return command
+
+  def _apply_r2_final_brake_interlock(self, command, CS, frame):
+    """Final veto AFTER direct R2 selection; preserve R2's lower ACC target.
+
+    Never interpret 0x275 as independently validated wheel torque; this
+    remains a command/feedback guard, not proof of physical brake response.
+    """
+    feedback = hybrid_feedback_snapshot(CS, frame)
+    fresh, braking_feedback = hybrid_brake_feedback_state(feedback)
+    if command.brake_state == BrakeState.HOLD:
+      return command
+    if command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING) or command.pump < 0.0:
+      command.is_accel = False
+      command.is_decel = True
+    elif braking_feedback or not fresh:
+      command.is_accel = False
+      command.is_decel = False
+      command.speed = float(CS.out.vEgo)
     return command
 
   def _observe_r2_v4(self, enabled, CS, frame, actuators, pcm_cancel_cmd, command):
@@ -186,26 +209,34 @@ class CarController:
       v50_command = command
       # R2 V4 actual moving-braking experiment: coordinate 0x271 and 0x273.
       proposal = self._observe_r2_v4(enabled, CS, frame, actuators, pcm_cancel_cmd, v50_command)
-      command, r2_action = self.r2_v4_actuator.apply(
-        v50_command, proposal,
-        enabled=bool(enabled and CS.out.cruiseState.enabled and not pcm_cancel_cmd),
-        speed_mps=float(CS.out.vEgo),
-        override=bool(CS.out.brakePressed or CS.out.gasPressed),
-        urgent=bool(getattr(self.longitudinal, "urgent_brake", False)),
-        engagement_guard=(frame < int(getattr(self.longitudinal, "block_brake_until_frame", 0))),
-      )
-      if r2_action.active and (r2_action.state_changed or frame % 20 == 0):
-        cloudlog.info(
-          "R2V4_EXPERIMENTAL_TX f=%d reason=%s actual_state=%d mag=%d target=%.3f "
-          "is_dec=%d is_acc=%d 275raw=%d expected275=%d friction08c=%d "
-          "base_state=%d base_mag=%d base_target=%.3f",
-          frame, r2_action.reason, command.brake_state, command.magnitude,
-          command.speed, command.is_decel, command.is_accel,
-          int(getattr(CS, "hybrid_brake_request_raw_275", 0)),
-          r2_action.expected_275_raw,
-          int(getattr(CS, "hybrid_friction_raw_08c", 0)),
-          v50_command.brake_state, v50_command.magnitude, v50_command.speed,
+      # Select EXACTLY ONE longitudinal command authority. The previous
+      # V5.2 command combiner is deliberately removed: V5.0's coast-first
+      # command is never used as the normal R2 hydraulic demand/floor.
+      if R2_V4_DIRECT_CAN_ENABLED:
+        feedback = hybrid_feedback_snapshot(CS, frame)
+        fresh, braking_feedback = hybrid_brake_feedback_state(feedback)
+        command, r2_status = self.r2_v4_direct.apply(
+          v50_command, proposal,
+          enabled=bool(enabled and CS.out.cruiseState.enabled and not pcm_cancel_cmd),
+          speed_mps=float(CS.out.vEgo),
+          override=bool(CS.out.brakePressed or CS.out.gasPressed),
+          urgent=bool(getattr(self.longitudinal, "urgent_brake", False)),
+          engagement_guard=(frame < int(getattr(self.longitudinal, "block_brake_until_frame", 0))),
+          feedback_fresh=fresh,
+          friction_active=braking_feedback,
         )
+        command = self._apply_r2_final_brake_interlock(command, CS, frame)
+        if frame % 20 == 0 or r2_status.feedback_fault:
+          cloudlog.info(
+            "R2V4_DIRECT f=%d authority=%s reason=%s mag=%d speed=%.3f "
+            "accel=%d decel=%d expected275=%d 275raw=%d friction=%d fault=%s",
+            frame, r2_status.authority, r2_status.reason,
+            command.magnitude, command.speed, command.is_accel,
+            command.is_decel, r2_status.expected_275,
+            int(getattr(CS, "hybrid_brake_request_raw_275", 0)),
+            int(getattr(CS, "hybrid_friction_raw_08c", 0)),
+            r2_status.feedback_fault,
+          )
       can_sends.append(
         dnga_create_accel_command(
           self.packer,
