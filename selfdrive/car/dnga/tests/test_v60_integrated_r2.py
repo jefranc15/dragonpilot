@@ -248,13 +248,36 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertEqual(magnitude, 1216)
     self.assertEqual(self.ctrl.sng_calls, 0)
 
-  def test_brake_scales_after_1216_and_is_v50_rate_limited(self):
+  def test_brake_scales_after_1216_with_stock_gentle_step(self):
+    self.tick(5)
+    self.assertAlmostEqual(self.ctrl.apply_brake, .08, places=6)
+    self.tick(10)
+    # 75% of the observed OEM positive median (+0.020 / 50 ms).
+    self.assertAlmostEqual(self.ctrl.apply_brake, .095, places=6)
+    self.tick(15)
+    self.assertGreater(self.ctrl.apply_brake, .095)
+    self.assertLessEqual(self.ctrl.apply_brake, .110001)
+
+  def test_stock_derived_acc_gap_softened_only_in_normal_mode(self):
+    stock = self.module.r2_stock_acc_gap_kph(60.0, .30)
+    normal = self.module.r2_acc_gap_kph(60.0, .30)
+    urgent = self.module.r2_acc_gap_kph(60.0, .30, urgent=True)
+    self.assertAlmostEqual(stock, 3.8235129, places=4)
+    self.assertAlmostEqual(normal, .85 * stock, places=6)
+    self.assertAlmostEqual(urgent, stock, places=6)
+
+  def test_acc_gap_clamped_outside_stock_domain(self):
+    self.assertEqual(self.module.r2_acc_gap_kph(0.0, .3), 0.0)
+    self.assertGreaterEqual(self.module.r2_acc_gap_kph(120.0, .2), 0.0)
+    self.assertLessEqual(self.module.r2_acc_gap_kph(120.0, .9), 10.7)
+
+  def test_urgent_braking_uses_v50_urgent_ramp(self):
+    self.lead.urgent = True
+    self.plan.brake = .60
     self.tick(5)
     self.tick(10)
-    self.assertAlmostEqual(self.ctrl.apply_brake, .086, places=6)
-    self.tick(15)
-    self.assertGreater(self.ctrl.apply_brake, .086)
-    self.assertLessEqual(self.ctrl.apply_brake, .092001)
+    # Urgent V5 step +0.015 is not replaced by comfort-only logic.
+    self.assertAlmostEqual(self.ctrl.apply_brake, .095, places=6)
 
   def test_brake_strength_respects_v50_highway_cap(self):
     self.cs.out.vEgo = 25.0
@@ -318,6 +341,27 @@ class V60V50ScalingTests(unittest.TestCase):
     self.assertLess(cmd.speed, self.cs.out.vEgo)
     self.assertFalse(cmd.is_accel)
     self.assertTrue(cmd.is_decel)
+
+  def test_native_command_target_slews_toward_gentle_stock_fit(self):
+    self.tick(5)
+    req = BrakeRequest(True, False, False, state=0x21)
+    first = self.ctrl._build_command(
+      self.cs, 5, self.session, self.plan, self.lead, req, None)
+    self.assertAlmostEqual((self.cs.out.vEgo-first.speed)*3.6,
+                           self.module.R2_GAP_STEP_UP_KPH, places=5)
+    self.tick(10)
+    second = self.ctrl._build_command(
+      self.cs, 10, self.session, self.plan, self.lead, req, None)
+    self.assertAlmostEqual((self.cs.out.vEgo-second.speed)*3.6,
+                           2*self.module.R2_GAP_STEP_UP_KPH, places=5)
+
+  def test_r2_never_changes_the_v50_sng_braking_domain(self):
+    self.cs.out.vEgo = 4.0
+    self.ctrl.apply_brake = .30
+    self.ctrl.sng_armed = True
+    self.tick(5)
+    self.assertEqual(self.ctrl.sng_calls, 1)
+    self.assertAlmostEqual(self.ctrl.apply_brake, .30)
 
   def test_pid_positive_does_not_force_coast_with_negative_planner(self):
     self.tick(5)
