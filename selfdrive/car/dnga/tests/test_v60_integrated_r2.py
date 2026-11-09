@@ -56,6 +56,17 @@ P = SimpleNamespace(
   BRAKE_FILTER_DOWN=0.08,
   BRAKE_STEP_UP=0.006,
   BRAKE_STEP_UP_URGENT=0.015,
+  BRAKE_MIN=0.05,
+  PUMP_05_THRESHOLD=0.75,
+  EMERGENCY_BRAKE_FILTER_UP=0.20,
+  EMERGENCY_BRAKE_STEP_UP=0.03,
+  STOCK_SMOOTH_FILTER_UP=0.12,
+  STOCK_SMOOTH_STEP_UP=0.012,
+  STOCK_URGENT_STEP_UP=0.03,
+  STOP_BRAKE_FILTER_UP=0.3,
+  STOP_BRAKE_STEP_UP=0.05,
+  DECEL_GOVERNOR_START=-0.9,
+  DECEL_GOVERNOR_STEP_DOWN=0.015,
 )
 
 
@@ -107,7 +118,7 @@ class FakeV50Controller:
     return BrakeRequest(self.brake_active, False, False)
 
   def _update_stop_guard(self, CS, frame, plan_brake, moving_allowed, lead):
-    return SimpleNamespace(active=False, request=0.0)
+    return SimpleNamespace(stock_active=False, active=False, request=0.0)
 
   def _apply_brake_target(self, raw_target, floor, ceiling, emergency, critical, guard):
     alpha = P.BRAKE_FILTER_UP if raw_target > self.brake_target else P.BRAKE_FILTER_DOWN
@@ -150,15 +161,31 @@ def module_under_test():
 
   legacy = stubs["selfdrive.car.dnga.longitudinal_v50_legacy"]
   legacy.BrakeRequest = BrakeRequest
-  legacy.distance_profile = lambda bars: (0.17, (0.42 if bars == 0 else 0.36 if bars == 2 else 0.39), 0.1)
-  legacy.curve_brake_cap = lambda v: interp(v, [5.6, 8, 15, 25, 35], [0.12, 0.17, 0.23, 0.28, 0.3])
-  legacy.progressive_brake_cap = lambda v: interp(v, [8, 15, 25, 35], [0.25, 0.27, 0.29, 0.30])
-  legacy.low_speed_brake_cap = lambda v: interp(v, [0.15, 0.3, 0.6, 1, 1.5, 2.5],
-                                               [0.05, 0.08, 0.15, 0.25, 0.4, 0.75])
-  legacy.high_speed_brake_cap = lambda v: interp(v, [0, 15, 25, 35, 45],
-                                                [0.65, 0.65, 0.6, 0.52, 0.48])
-  legacy.stop_guard_brake_cap = lambda v: interp(v, [0, .5, 1, 1.5, 2.5, 4, 6, 8],
-                                                [.24, .25, .28, .32, .40, .46, .52, .56])
+  # Load the exact helper functions and the original _apply_brake_target
+  # implementation from the retained V5.0 source. Nothing is reimplemented
+  # in the test fixture for demand filtering, envelope or brake encoding.
+  original = ast.parse((ROOT / "longitudinal_v50_legacy.py").read_text())
+  helper_names = ("distance_profile", "curve_brake_cap", "progressive_brake_cap",
+                  "low_speed_brake_cap", "high_speed_brake_cap",
+                  "stop_guard_brake_cap", "encode_hev_brake")
+  nodes = [node for node in original.body
+           if isinstance(node, ast.FunctionDef) and node.name in helper_names]
+  if {node.name for node in nodes} != set(helper_names):
+    raise AssertionError("V5.0 helper missing")
+  namespace = {"P": P, "clip": clip, "interp": interp}
+  exec(compile(ast.Module(body=nodes, type_ignores=[]), str(ROOT / "longitudinal_v50_legacy.py"), "exec"),
+       namespace)
+  for name in helper_names:
+    setattr(legacy, name, namespace[name])
+
+  cls = next(node for node in original.body if isinstance(node, ast.ClassDef)
+             and node.name == "LongitudinalController")
+  filt = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
+              and node.name == "_apply_brake_target")
+  exec(compile(ast.Module(body=[filt], type_ignores=[]),
+               str(ROOT / "longitudinal_v50_legacy.py"), "exec"), namespace)
+  FakeV50Controller._apply_brake_target = namespace["_apply_brake_target"]
+
   stubs["selfdrive.car.dnga.longitudinal_kinematic_guard"].LongitudinalController = FakeV50Controller
   stubs["selfdrive.car.dnga.values"].BrakeState = SimpleNamespace(
     DISABLED=0, READY=1, BRAKING=0x21, CREEPING=0x31, HOLD=0x30)
@@ -198,6 +225,18 @@ class V60V50ScalingTests(unittest.TestCase):
   def tick(self, frame=5, pid=-.2):
     return self.ctrl._update_hydraulic(
       self.cs, frame, self.session, pid, self.plan, self.lead)
+
+  def test_uses_exact_original_v50_encoder(self):
+    native = self.module.__dict__["encode_hev_brake"] if "encode_hev_brake" in self.module.__dict__ else None
+    # The active longitudinal module imports V5 helper methods by name.
+    # Retrieve the real implementation directly from the source AST.
+    original = ast.parse((ROOT / "longitudinal_v50_legacy.py").read_text())
+    node = next(n for n in original.body
+                if isinstance(n, ast.FunctionDef) and n.name == "encode_hev_brake")
+    ns = {"P": P, "clip": clip}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(ROOT / "longitudinal_v50_legacy.py"), "exec"), ns)
+    self.assertEqual(ns["encode_hev_brake"](.08), (-.4, 1216))
+    self.assertEqual(ns["encode_hev_brake"](.086), (-.4, 1215))
 
   def test_first_normal_brake_is_exactly_1216(self):
     req = self.tick()
