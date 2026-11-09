@@ -39,9 +39,13 @@ Their history is available from V5.2 branches.
    planner deceleration from a lead, selected vision turn (while above
    the vision-turn speed), or user lower cruise set speed. It does **not**
    require a V5.0 lead→coast→hydraulic handoff.
-4. On the first ordinary moving BRAKING request, `apply_brake = 0.08`
-   encodes with the ORIGINAL V5.0 `encode_hev_brake` to
+4. On the first **ordinary** moving BRAKING request, `apply_brake = 0.08`
+   still encodes with the original V5.0 encoder to
    `BRAKE_STATE=0x21, MAGNITUDE=1216, PUMP=-0.4`.
+   A trusted, already-authorized lead with strong planner braking may instead
+   enter at up to 0.12; geometry-confirmed emergency lead braking at up to
+   0.16. Both respect the actual requested demand and inherited speed/lead
+   caps. These urgent initial requests remain physically unvalidated.
 5. The NEXT updates call the original V5.0 `_apply_brake_target`
    filter (0.08) and speed/lead/curve caps, then use a *normal-only*
    comfort rise of up to +0.015 per 20 Hz update. This is 75% of the
@@ -57,9 +61,10 @@ Their history is available from V5.2 branches.
    current control is asserted or proved. See
    `docs/dnga_v60_stock_acc_comfort_fit.md` for data and limitations.
 7. Normal moving release ramps brake strength down with the V5.0
-   release rate/confirmation, then proposes a 24-update
-   READY/1224/-0.4 phase. This release hypothesis remains UNVALIDATED
-   against actual hybrid ECU behavior and previous engine-rev events.
+   release rate/confirmation, then proposes a 16-update (80 frames,
+   0.8-second) READY/1224/-0.4 phase. This shortened release hypothesis
+   remains UNVALIDATED against actual hybrid ECU behavior and previous
+   engine-rev events. Historical SNG release remains unchanged.
 8. V5.0's emergency lead supervision, low-speed stop, normal accelerator
    gating and HEV feedback rules remain inherited. Current R2
    start/scale behavior nevertheless needs independent validation for
@@ -82,8 +87,8 @@ from `longitudinal.py`, without a V5/R2 selector.
 
 **Do not treat this integration as road-ready.** It has not been verified
 against actual ECU response, safe stopping distance, or the earlier RPM-surge
-failure. R2's 24-step READY/-0.4 moving release and first-frame urgent 0.08
-command remain unvalidated. The Panda hook also lacks independent
+failure. R2's 16-step READY/-0.4 moving release and first-frame urgent
+0.12/emergency 0.16 maximum commands remain unvalidated. The Panda hook also lacks independent
 command-content and disengagement enforcement.
 
 Passing the isolated tests only demonstrates source-level behavior. It
@@ -98,7 +103,8 @@ response still lacks a validated brake-failure/degraded-mode strategy.
 
 `.github/workflows/v60-r2-offline.yml` syntax-checks the DNGA port,
 and tests 1216 entry, V5.0 rate limits, highway/curve envelope,
-source authority, release ramp and inherited low-speed call flow.
+source authority, normal/urgent/emergency initial request envelopes, the
+16-step release pump interval and inherited low-speed call flow.
 
 Review only, without changing the installed phone branch:
 
