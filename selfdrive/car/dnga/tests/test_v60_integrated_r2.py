@@ -561,10 +561,25 @@ class V60V50ScalingTests(unittest.TestCase):
     for frame in range(5, 55, 5):
       self.assertFalse(self.tick(frame).hydraulic)
     self.plan.brake = 0.20
-    self.plan.accel = -0.20
+    self.plan.accel = -0.20  # lookahead-derived request
+    self.ctrl.plan_accel = 0.20  # near-term planner still says ACCEL
     self.plan.turn_speed = 0.0
     for frame in range(55, 105, 5):
       self.assertFalse(self.tick(frame).hydraulic)
+
+  def test_curve_without_turn_speed_can_brake_on_real_near_term_plan(self):
+    # Older 0.8.13 recorded no usable visionTurnSpeed even with turn selected.
+    self.plan.has_lead = False
+    self.plan.curve_active = True
+    self.plan.source = "turn"
+    self.plan.turn_speed = 0.0
+    self.plan.brake = .2
+    self.plan.accel = -.2
+    self.ctrl.plan_accel = -.2
+    self.lead.relevant = False
+    self.assertFalse(self.tick(5).hydraulic)
+    self.assertFalse(self.tick(10).hydraulic)
+    self.assertTrue(self.tick(15).hydraulic)
 
   def test_curve_entry_confirmed_after_three_stable_updates(self):
     self.plan.has_lead = False
