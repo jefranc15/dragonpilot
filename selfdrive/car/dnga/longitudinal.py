@@ -187,15 +187,23 @@ class LongitudinalController(BaseLongitudinalController):
     # R2 no longer consults V5.0's moving lead->coast->hydraulic gate, coast
     # handoff counter, normal reentry timer, or independent R2 shadow object.
     lead_allowed = bool(lead_state.relevant and lead_state.status and plan.has_lead)
-    # A single tiny future acceleration dip, invalid (zero) turn speed, or
-    # one-frame turn/cruise source flip must not start normal hydraulics.
+    # A tiny future acceleration dip or one-frame turn/cruise flicker must
+    # not initiate hydraulic braking. Some older 0.8.13 logs expose an
+    # invalid/zero visionTurnSpeed even when source=turn. In that case
+    # require meaningful *near-term* OP deceleration, not just a future dip.
     curve_speed_margin = (P.CURVE_SPEED_ERROR_RELEASE
                           if self.r2_moving and self.curve_brake_active
                           else P.CURVE_SPEED_ERROR_ENTRY)
+    valid_curve_target = (plan.turn_speed > 0.0
+                          and v > plan.turn_speed + curve_speed_margin)
+    near_term_curve_demand = (
+      plan.turn_speed <= 0.0
+      and getattr(self, "plan_accel", plan.accel) <= -P.CURVE_BRAKE_ENTRY
+    )
     curve_candidate = bool(
-      plan.curve_active and not lead_allowed and plan.turn_speed > 0.0
+      plan.curve_active and not lead_allowed
       and plan.brake >= P.CURVE_BRAKE_ENTRY
-      and v > plan.turn_speed + curve_speed_margin
+      and (valid_curve_target or near_term_curve_demand)
     )
     if curve_candidate:
       self.r2_curve_entry_counter = min(
