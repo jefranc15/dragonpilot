@@ -33,6 +33,18 @@ def interp(x, bp, fp):
 P = SimpleNamespace(
   CURVE_HYDRAULIC_MIN_SPEED=5.6,
   CURVE_SPEED_ERROR_RELEASE=0.2,
+  CURVE_SPEED_ERROR_ENTRY=0.7,
+  CURVE_ENTRY_COUNT=3,
+  CURVE_BRAKE_ENTRY=0.12,
+  STOP_HOLD_MIN_DISTANCE=1.0,
+  STOP_HOLD_MAX_DISTANCE=12.0,
+  HOLD_RESUME_LEAD_SPEED=0.35,
+  SNG_RELEASE_ACCEL=0.08,
+  RADAR_MAX_AGE_FRAMES=50,
+  HOLD_RESUME_COUNT=6,
+  SNG_HOLD_BRAKE=0.05,
+  SNG_RELEASE_COUNT=5,
+  RELEASE_LEAD_HOLD_FRAMES=80,
   CRUISE_DECEL_MARGIN=0.3,
   LEAD_LOOKAHEAD_TARGET_CAP=0.2,
   LEAD_LOOKAHEAD_MIN_CLOSING=0.5,
@@ -112,6 +124,12 @@ class FakeV50Controller:
     self.stop_hold = False
     self.sng_release_count = 0
     self.filtered_aego = a_ego
+    self.hold_resume_counter = 0
+    self.speed_offset = 0.0
+    self.release_lead_until_frame = frame
+    self.plan_source = "lead0"
+    self.lead1_status = False
+    self.radar_frame = frame
     self.handoff_pending = False
     self.handoff_ready_counter = 0
     self.kinematic_ready_counter = 0
@@ -145,6 +163,9 @@ class FakeV50Controller:
     self.release_counter = 0
     self.curve_brake_active = False
     self.urgent_brake = False
+
+  def _start_staged_release(self, frame):
+    self.release_pump_until_frame = frame + 120
 
   def _build_command(self, CS, frame, session, plan, lead_state, brake, propulsion):
     return Command(speed=CS.out.vEgo, brake_state=brake.state)
@@ -187,6 +208,11 @@ def module_under_test():
              and node.name == "LongitudinalController")
   filt = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
               and node.name == "_apply_brake_target")
+  inherited_hold = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
+                        and node.name == "_update_stop_hold")
+  exec(compile(ast.Module(body=[inherited_hold], type_ignores=[]),
+               str(ROOT / "longitudinal_v50_legacy.py"), "exec"), namespace)
+  FakeV50Controller._update_stop_hold = namespace["_update_stop_hold"]
   exec(compile(ast.Module(body=[filt], type_ignores=[]),
                str(ROOT / "longitudinal_v50_legacy.py"), "exec"), namespace)
   FakeV50Controller._apply_brake_target = namespace["_apply_brake_target"]
@@ -223,8 +249,8 @@ class V60V50ScalingTests(unittest.TestCase):
       source="lead0", accel=-0.30, brake=0.30,
       lead_lookahead_brake=0.1)
     self.lead = SimpleNamespace(
-      relevant=True, status=True, urgent=False,
-      closing_speed=1.5, ttc=12.0)
+      relevant=True, visible=True, status=True, urgent=False, stopped=False,
+      speed=5.0, distance=15.0, closing_speed=1.5, ttc=12.0)
     self.session = SimpleNamespace(allowed=True, enabled=True, gas_override=False)
 
   def tick(self, frame=5, pid=-.2):
@@ -325,7 +351,9 @@ class V60V50ScalingTests(unittest.TestCase):
     self.lead.relevant = False
     self.lead.status = False
     self.lead.urgent = False
-    req = self.tick(5, pid=-.8)
+    self.assertFalse(self.tick(5, pid=-.8).hydraulic)
+    self.assertFalse(self.tick(10, pid=-.8).hydraulic)
+    req = self.tick(15, pid=-.8)
     self.assertTrue(req.hydraulic)
     self.assertAlmostEqual(self.ctrl.apply_brake, .08)
 
@@ -489,6 +517,196 @@ class V60V50ScalingTests(unittest.TestCase):
     req = self.tick(10, pid=.2)
     self.assertTrue(req.hydraulic)
     self.assertEqual(self.ctrl.r2_authority, "r2_braking")
+
+  def test_positive_planner_negative_pid_does_not_create_brake(self):
+    # From Nov 10 marked chatter: +0.281 planner, -0.103 downstream PID,
+    # source=cruise, planner has trusted lead, no negative lookahead.
+    self.plan.source = "cruise"
+    self.plan.accel = 0.281
+    self.plan.brake = 0.0
+    self.plan.lead_lookahead_brake = 0.0
+    req = self.tick(5, pid=-0.103)
+    self.assertFalse(req.hydraulic)
+    self.assertFalse(req.release_pump)
+    self.assertAlmostEqual(self.ctrl.apply_brake, 0.0)
+
+  def test_real_closing_lead_lookahead_still_brakes_with_positive_immediate_plan(self):
+    self.plan.source = "cruise"
+    self.plan.accel = 0.20
+    self.plan.brake = 0.0
+    self.plan.lead_lookahead_brake = 0.12
+    self.lead.closing_speed = 1.5
+    self.lead.ttc = 12.0
+    req = self.tick(5, pid=-0.10)
+    self.assertTrue(req.hydraulic)
+    self.assertAlmostEqual(self.ctrl.apply_brake, 0.08)
+
+  def test_no_lookahead_authority_without_real_closing(self):
+    self.plan.source = "cruise"
+    self.plan.accel = 0.20
+    self.plan.brake = 0.0
+    self.plan.lead_lookahead_brake = 0.20
+    self.lead.closing_speed = 0.1
+    req = self.tick(5, pid=-0.2)
+    self.assertFalse(req.hydraulic)
+
+  def test_curve_tiny_future_dip_and_invalid_turn_speed_cannot_brake(self):
+    self.plan.has_lead = False
+    self.plan.curve_active = True
+    self.plan.source = "turn"
+    self.plan.turn_speed = 5.0
+    self.plan.brake = 0.032
+    self.plan.accel = -0.032
+    self.lead.relevant = False
+    for frame in range(5, 55, 5):
+      self.assertFalse(self.tick(frame).hydraulic)
+    self.plan.brake = 0.20
+    self.plan.accel = -0.20  # lookahead-derived request
+    self.ctrl.plan_accel = 0.20  # near-term planner still says ACCEL
+    self.plan.turn_speed = 0.0
+    for frame in range(55, 105, 5):
+      self.assertFalse(self.tick(frame).hydraulic)
+
+  def test_curve_without_turn_speed_can_brake_on_real_near_term_plan(self):
+    # Older 0.8.13 recorded no usable visionTurnSpeed even with turn selected.
+    self.plan.has_lead = False
+    self.plan.curve_active = True
+    self.plan.source = "turn"
+    self.plan.turn_speed = 0.0
+    self.plan.brake = .2
+    self.plan.accel = -.2
+    self.ctrl.plan_accel = -.2
+    self.lead.relevant = False
+    self.assertFalse(self.tick(5).hydraulic)
+    self.assertFalse(self.tick(10).hydraulic)
+    self.assertTrue(self.tick(15).hydraulic)
+
+  def test_curve_entry_confirmed_after_three_stable_updates(self):
+    self.plan.has_lead = False
+    self.plan.curve_active = True
+    self.plan.source = "turn"
+    self.plan.turn_speed = 15.0
+    self.plan.brake = 0.25
+    self.plan.accel = -0.25
+    self.lead.relevant = False
+    self.assertFalse(self.tick(5).hydraulic)
+    self.assertFalse(self.tick(10).hydraulic)
+    self.assertTrue(self.tick(15).hydraulic)
+
+  def test_curve_source_flicker_resets_entry_confirmation(self):
+    self.plan.has_lead = False
+    self.plan.curve_active = True
+    self.plan.source = "turn"
+    self.plan.turn_speed = 15.0
+    self.plan.brake = 0.25
+    self.plan.accel = -0.25
+    self.lead.relevant = False
+    self.assertFalse(self.tick(5).hydraulic)
+    self.plan.source = "cruise"
+    self.plan.curve_active = False
+    self.plan.brake = 0.0
+    self.plan.accel = 0.1
+    self.assertFalse(self.tick(10).hydraulic)
+    self.plan.source = "turn"
+    self.plan.curve_active = True
+    self.plan.brake = 0.25
+    self.plan.accel = -0.25
+    self.assertFalse(self.tick(15).hydraulic)
+    self.assertFalse(self.tick(20).hydraulic)
+    self.assertTrue(self.tick(25).hydraulic)
+
+  def _begin_normal_ready_release(self):
+    self.tick(5)
+    self.plan.brake = 0.0
+    self.plan.accel = 0.0
+    self.plan.lead_lookahead_brake = 0.0
+    for frame in range(10, 60, 5):
+      req = self.tick(frame, pid=0.0)
+    self.assertTrue(req.release_pump)
+    self.assertFalse(req.hydraulic)
+    return 55
+
+  def test_small_normal_demand_cannot_chatter_during_ready_pump(self):
+    start = self._begin_normal_ready_release()
+    self.plan.brake = 0.03
+    self.plan.accel = -0.03
+    for frame in range(start + 5, start + 55, 5):
+      req = self.tick(frame, pid=-0.05)
+      self.assertFalse(req.hydraulic)
+      self.assertTrue(req.release_pump)
+
+  def test_meaningful_normal_braking_reenters_after_bounded_confirmation(self):
+    self._begin_normal_ready_release()
+    self.plan.brake = 0.20
+    self.plan.accel = -0.20
+    # Release began at frame 55; cooldown lasts through frame 70.
+    self.assertFalse(self.tick(60).hydraulic)
+    self.assertFalse(self.tick(65).hydraulic)
+    self.assertFalse(self.tick(70).hydraulic)
+    self.assertFalse(self.tick(75).hydraulic)
+    self.assertTrue(self.tick(80).hydraulic)
+
+  def test_authorized_urgent_can_interrupt_ready_pump_immediately(self):
+    self._begin_normal_ready_release()
+    self.plan.brake = 0.7
+    self.plan.accel = -0.7
+    self.lead.urgent = True
+    req = self.tick(60, pid=-0.7)
+    self.assertTrue(req.hydraulic)
+    self.assertGreaterEqual(self.ctrl.apply_brake, 0.08)
+    self.assertFalse(req.release_pump)
+
+  def _prepare_standstill_hold(self):
+    self.ctrl.stop_hold = True
+    self.ctrl.sng_armed = True
+    self.ctrl.brake_active = True
+    self.ctrl.apply_brake = 0.05
+    self.ctrl.radar_frame = 100
+    self.ctrl.plan_source = "lead0"
+    self.cs.out.vEgo = 0.0
+    self.cs.out.standstill = True
+    self.plan.source = "lead0"
+    self.plan.accel = 0.2
+    self.plan.brake = 0.0
+    self.lead.speed = 0.8
+    self.lead.distance = 4.0
+    self.lead.visible = True
+    self.lead.status = True
+    self.lead.stopped = False
+
+  def test_sng_hold_ignores_velocity_only_radar_jitter(self):
+    self._prepare_standstill_hold()
+    for i in range(16):
+      frame = 105 + 5 * i
+      self.ctrl.radar_frame = frame
+      self.lead.distance = 4.0 + (0.08 if i % 2 else 0.0)
+      self.ctrl._update_stop_hold(
+        self.cs, frame, self.session, 0.2, self.plan, self.lead)
+      self.assertTrue(self.ctrl.stop_hold)
+      self.assertEqual(self.ctrl.hold_resume_counter, 0)
+
+  def test_sng_hold_requires_distance_advance_then_old_six_count_resume(self):
+    self._prepare_standstill_hold()
+    released = False
+    for i in range(20):
+      frame = 105 + 5 * i
+      self.ctrl.radar_frame = frame
+      self.lead.distance = 4.0 + 0.04 * i
+      self.ctrl._update_stop_hold(
+        self.cs, frame, self.session, 0.2, self.plan, self.lead)
+      if not self.ctrl.stop_hold:
+        released = True
+        break
+    self.assertTrue(released)
+    self.assertGreaterEqual(i, 10)
+    self.assertGreater(self.lead.distance, 4.15)
+
+  def test_sng_hold_driver_override_preserves_original_exit(self):
+    self._prepare_standstill_hold()
+    self.session.allowed = False
+    self.ctrl._update_stop_hold(
+      self.cs, 105, self.session, 0.2, self.plan, self.lead)
+    self.assertFalse(self.ctrl.stop_hold)
 
   def test_one_controller_and_interlock_are_kept(self):
     src = CONTROLLER.read_text()

@@ -33,12 +33,18 @@ Their history is available from V5.2 branches.
 1. The inherited V5.0 code updates the SAME planner/radar/lead/session
    state once at the normal 20 Hz longitudinal CAN cadence.
 2. **Below 5.6 m/s (~20 km/h), standstill, stop-hold, armed SNG or SNG
-   release:** the original V5.0 `_update_hydraulic` path runs unmodified.
-   There is no second low-speed controller or late state migration.
-3. Above that domain, the R2 moving-brake entry accepts legitimate
-   planner deceleration from a lead, selected vision turn (while above
-   the vision-turn speed), or user lower cruise set speed. It does **not**
-   require a V5.0 lead→coast→hydraulic handoff.
+   release:** the original V5.0 `_update_hydraulic` logic and state remain
+   inherited. The only new standstill change is an independent, read-only
+   radar distance-trend plausibility gate before its original automatic
+   six-update HOLD resume confirmation. No second low-speed controller.
+3. Above that domain, R2 moving braking accepts authorized planner
+   deceleration from a lead, selected vision turn, or a user-lowered cruise
+   set speed. PID-only negative acceleration cannot create new braking
+   when the planner and bounded lead lookahead request none. A selected
+   turn must persist for three 20 Hz samples with meaningful planned
+   deceleration and a valid turn-speed target, or, where unavailable,
+   meaningful near-term planner deceleration. The old V5 coast-first
+   handoff is not invoked for moving braking.
 4. On the first **ordinary** moving BRAKING request, `apply_brake = 0.08`
    still encodes with the original V5.0 encoder to
    `BRAKE_STATE=0x21, MAGNITUDE=1216, PUMP=-0.4`.
@@ -65,10 +71,13 @@ Their history is available from V5.2 branches.
    0.8-second) READY/1224/-0.4 phase. This shortened release hypothesis
    remains UNVALIDATED against actual hybrid ECU behavior and previous
    engine-rev events. Historical SNG release remains unchanged.
-8. V5.0's emergency lead supervision, low-speed stop, normal accelerator
-   gating and HEV feedback rules remain inherited. Current R2
-   start/scale behavior nevertheless needs independent validation for
-   critical stopping and unexpected feedback.
+8. After normal moving braking clears, a 0.20-second minimum cooldown,
+   plus two confirmed 20 Hz samples, and a minimum 0.08 planned/requested
+   brake demand prevent tiny oscillations from interrupting the READY/pump
+   phase. Already-authorized urgent/emergency leads bypass normal reentry
+   inhibition. V5.0's emergency lead supervision, normal accelerator
+   gating and HEV feedback rules remain inherited; physical response
+   is still unvalidated.
 
 ## Safety status
 
@@ -103,8 +112,12 @@ response still lacks a validated brake-failure/degraded-mode strategy.
 
 `.github/workflows/v60-r2-offline.yml` syntax-checks the DNGA port,
 and tests 1216 entry, V5.0 rate limits, highway/curve envelope,
-source authority, normal/urgent/emergency initial request envelopes, the
-16-step release pump interval and inherited low-speed call flow.
+source authority, normal/urgent/emergency initial request envelopes, PID-only
+entry suppression, three-sample curve selection, bounded moving reentry,
+radar distance-trend gating before historical HOLD release, the 16-step
+release pump interval and inherited low-speed call flow. See
+`docs/dnga_v60_chatter_sng_20261112.md` for marked-log evidence and
+the still-unresolved missed-SNG braking shortfall.
 
 Review only, without changing the installed phone branch:
 
