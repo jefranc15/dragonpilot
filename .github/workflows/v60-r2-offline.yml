@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v6.0
+      - v6.0-chatter-sng-offline-20261112
   pull_request:
     branches:
       - v6.0
