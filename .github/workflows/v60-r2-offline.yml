@@ -31,3 +31,6 @@ jobs:
       - name: Integrated v6 R2 command tests (fake messaging/feedback, no ECU)
         run: |
           python selfdrive/car/dnga/tests/test_v60_integrated_r2.py -v
+      - name: Read-only marked lead/turn advisory regression (no CAN output)
+        run: |
+          python selfdrive/car/dnga/tests/test_v60_offline_turn_lead_review.py -v
