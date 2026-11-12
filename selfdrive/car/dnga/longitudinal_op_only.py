@@ -7,7 +7,7 @@ geometry owns normal brake entry and magnitude; physical HEV feedback remains
 the brake-to-propulsion safety gate.
 """
 
-from selfdrive.car.dnga.longitudinal import StopGuard, relative_stop_request
+from selfdrive.car.dnga.longitudinal_v50_legacy import StopGuard, relative_stop_request
 from selfdrive.car.dnga.longitudinal_atomic_release import LongitudinalController as AtomicReleaseLongitudinalController
 from selfdrive.car.dnga.values import LongitudinalParams as P
 
