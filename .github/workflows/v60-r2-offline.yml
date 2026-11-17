@@ -34,3 +34,6 @@ jobs:
       - name: Read-only marked lead/turn advisory regression (no CAN output)
         run: |
           python selfdrive/car/dnga/tests/test_v60_offline_turn_lead_review.py -v
+      - name: Read-only HEV highway handoff anomaly regression (no CAN output)
+        run: |
+          python selfdrive/car/dnga/tests/test_v60_highway_handoff_audit.py -v
