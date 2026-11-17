@@ -117,9 +117,8 @@ class CarInterface(CarInterfaceBase):
 
     if candidate == CAR.YARISCROSSHEV:
       ret.wheelbase = 2.620
-      # Fixed from repeated on-road learner convergence. V4.3.9 no longer lets
-      # locationd/paramsd overwrite this vehicle-model parameter.
-      ret.steerRatio = 18.35
+      # Base ratio used when the live learner has no saved estimate.
+      ret.steerRatio = 17.0
       ret.centerToFront = ret.wheelbase * 0.44
       tire_stiffness_factor = 0.7933
       ret.mass = 1250.0 + STD_CARGO_KG

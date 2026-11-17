@@ -6,7 +6,7 @@ while preventing positive propulsion from being armed before the release pump
 has ended and passive HEV feedback has subsequently confirmed a clean handoff.
 """
 
-from selfdrive.car.dnga.longitudinal import LongitudinalController as BaseLongitudinalController
+from selfdrive.car.dnga.longitudinal_v50_legacy import LongitudinalController as BaseLongitudinalController
 from selfdrive.car.dnga.values import LongitudinalParams as P
 
 
