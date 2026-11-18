@@ -89,7 +89,7 @@ class CarInterface(CarInterfaceBase):
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=[]):
     ret = CarInterfaceBase.get_std_params(candidate, fingerprint)
     ret.carName = "dnga"
-    ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.toyota)]
+    ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.dngaStock)]
     ret.safetyConfigs[0].safetyParam = 1
     ret.transmissionType = car.CarParams.TransmissionType.automatic
     ret.radarOffCan = True
@@ -106,8 +106,9 @@ class CarInterface(CarInterfaceBase):
 
     ret.enableGasInterceptor = False  # no physical gas interceptor
 
-    # Software longitudinal control owns the accelerator and brake commands.
-    ret.openpilotLongitudinalControl = True
+    # V7: Toyota camera is the sole longitudinal owner. OP retains lateral.
+    # Dedicated safety model 32 blocks OP 0x271/0x273/0x274 transmission.
+    ret.openpilotLongitudinalControl = False
 
     # CarState owns the software ACC MAIN/SET/RES latch and publishes the exact
     # set speed shown on the cluster. Treat that software cruise state as the
@@ -151,6 +152,7 @@ class CarInterface(CarInterfaceBase):
 
   def _update_raw_can(self, can_strings):
     """Observe bus-1 hybrid feedback and validated bus-2 camera requests."""
+    self.CS.current_interface_frame = self.frame
     if not hasattr(self.CS, "hybrid_feedback_rx_frame_275"):
       initialize_hybrid_feedback_state(self.CS)
 
@@ -202,6 +204,8 @@ class CarInterface(CarInterfaceBase):
                 self.CS.stock_acc_request_is_accel = is_accel
                 self.CS.stock_acc_request_is_decel = is_decel
                 self.CS.stock_acc_cmd = acc_cmd_kph
+                # DBC SET_SPEED at bit 7|8@0+ maps to the first byte.
+                self.CS.stock_acc_set_speed = int(msg.dat[0])
                 self.CS.stock_acc_request_rx_frame = self.frame
       except Exception:
         pass
