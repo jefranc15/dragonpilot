@@ -44,7 +44,7 @@
 #define SAFETY_STELLANTIS 25U
 #define SAFETY_VOLVO_C1 26U
 #define SAFETY_VOLVO_EUCD 27U
-#define SAFETY_DNGA_STOCK 32U
+#define SAFETY_DNGA_STOCK 28U
 uint16_t current_safety_mode = SAFETY_SILENT;
 int16_t current_safety_param = 0;
 const safety_hooks *current_hooks = &nooutput_hooks;
