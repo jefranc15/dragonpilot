@@ -5,6 +5,7 @@ matching dedicated Panda safety hook. OP transmits only 0x1D0 steering.
 The factory brake smoothing candidate is *shadow only*: it is never sent.
 """
 
+from cereal import car
 from common.numpy_fast import clip, interp
 from opendbc.can.packer import CANPacker
 from selfdrive.car.dnga.dngacan import create_can_steer_command
@@ -50,7 +51,7 @@ class CarController:
 
     # Never silently use this controller with OP longitudinal enabled:
     # its sole-owner camera forwarding needs a different Panda safety model.
-    if CP.openpilotLongitudinalControl or str(CP.safetyConfigs[0].safetyModel) not in ("dngaStock", "32"):
+    if CP.openpilotLongitudinalControl or CP.safetyConfigs[0].safetyModel != car.CarParams.SafetyModel.dngaStock:
       raise RuntimeError("V7 stocklong requires factory longitudinal and dngaStock Panda safety")
 
   def update(
