@@ -557,6 +557,7 @@ struct CarParams {
     stellantis @25;
 	volvoC1 @26;
     volvoEUCD @27;
+    dngaStock @32;  # DNGA factory ACC owner, OP steering only; requires matching Panda firmware
   }
 
   enum SteerControlType {
