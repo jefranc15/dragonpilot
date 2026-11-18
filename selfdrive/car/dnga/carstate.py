@@ -115,6 +115,32 @@ class CarState(CarStateBase):
 
     self._update_buttons(cp, ret, v_ego_cluster)
 
+    if not self.CP.openpilotLongitudinalControl:
+      # V7 stocklong: use fresh camera cruise intent rather than the old
+      # OP-generated software latch. Camera intent is NOT an ECU ACK.
+      # Suppress the engaged indication if the input goes stale.
+      frame = getattr(self, "current_interface_frame", -1)
+      rx_frame = getattr(self, "stock_acc_request_rx_frame", -1000000)
+      stock_fresh = 0 <= frame - rx_frame <= 15
+      camera_enabled = bool(getattr(self, "stock_acc_request_enabled", False))
+      no_lead_below_factory_limit = (
+        ret.vEgo < 8.3 and not getattr(self, "stock_acc_request_lead", False)
+      )
+      factory_request_active = bool(
+        stock_fresh and camera_enabled and
+        getattr(self, "stock_acc_cmd", 0.0) > 0.0 and
+        not no_lead_below_factory_limit and not ret.brakePressed
+      )
+      self.stock_acc_engaged = factory_request_active
+      ret.cruiseState.available = bool(self.acc_main_latch or factory_request_active)
+      ret.cruiseState.enabled = factory_request_active
+      if stock_fresh:
+        # Genuine camera SET_SPEED; not OP's virtual set speed.
+        self.cruise_speed = float(getattr(self, "stock_acc_set_speed", 0)) * CV.KPH_TO_MS
+        ret.cruiseState.speed = self.cruise_speed
+        ret.cruiseState.speedCluster = self.cruise_speed
+      ret.cruiseState.standstill = bool(ret.standstill)
+
     ret.leftBlinker = bool(cp.vl["METER_CLUSTER"]["LEFT_SIGNAL"])
     ret.rightBlinker = bool(cp.vl["METER_CLUSTER"]["RIGHT_SIGNAL"])
     ret.genericToggle = bool(cp.vl["RIGHT_STALK"]["GENERIC_TOGGLE"])
