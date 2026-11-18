@@ -1,23 +1,20 @@
+"""DNGA V7.0 stock-longitudinal controller.
+
+Toyota's original camera 0x271/0x273/0x274 messages are forwarded by the
+matching dedicated Panda safety hook. OP transmits only 0x1D0 steering.
+The factory brake smoothing candidate is *shadow only*: it is never sent.
+"""
+
 from common.numpy_fast import clip, interp
 from opendbc.can.packer import CANPacker
-from selfdrive.car import make_can_msg
-from selfdrive.car.dnga.dngacan import (
-  create_can_steer_command,
-  dnga_create_accel_command,
-  dnga_create_brake_command,
-  dnga_create_hud,
-)
-from selfdrive.car.dnga.dnga_hybrid_feedback import hybrid_brake_feedback_state, hybrid_feedback_snapshot
-from selfdrive.car.dnga.longitudinal import LongitudinalController, R2_MOVING_MIN_SPEED
-from selfdrive.car.dnga.values import BrakeState, DBC, CarControllerParams
+from selfdrive.car.dnga.dngacan import create_can_steer_command
+from selfdrive.car.dnga.stock_long_shadow import StockBrakeShadow
+from selfdrive.car.dnga.values import DBC, CarControllerParams
 
 try:
-  from common.features import Features
+  from selfdrive.swaglog import cloudlog
 except ImportError:
-
-  class Features:
-    def has(self, feature_name):
-      return False
+  cloudlog = None
 
 
 def apply_dnga_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, blinker_on, LIMITS):
@@ -48,82 +45,22 @@ class CarController:
     self.steer_rate_limited = False
     self.params = CarControllerParams(CP)
     self.packer = CANPacker(DBC[CP.carFingerprint]["pt"])
-    f = Features()
-    self.need_clear_engine = f.has("ClearCode")
     self.stock_ldw = False
-    self.longitudinal = LongitudinalController()
+    self.stock_brake_shadow = StockBrakeShadow()
 
-  def _apply_brake_propulsion_interlock(self, command, CS, frame):
-    """Final physical-brake acceleration veto for the selected controller.
-
-    0x275 brake request plus 0x08C friction remain a hard physical-braking
-    acceleration veto. Raw torque request/actual channels have no authority.
-    """
-    feedback = hybrid_feedback_snapshot(CS, frame)
-    fresh, physical_braking = hybrid_brake_feedback_state(feedback)
-
-    if command.brake_state == BrakeState.HOLD:
-      # Preserve the inherited confirmed-standstill HOLD mode bits and target.
-      return command
-
-    hydraulic = command.brake_state in (BrakeState.BRAKING, BrakeState.CREEPING)
-    release_pump = command.pump < 0.0
-
-    # One controller object retains the historical low-speed SNG logic.
-    # Only its authorized moving-brake/release phase owns a below-vEgo
-    # 0x273 target. All SNG/CREEPING/low-speed commands keep the original
-    # neutral hydraulic target at current speed.
-    moving_brake_phase = (
-      CS.out.vEgo >= R2_MOVING_MIN_SPEED
-      and not CS.out.standstill
-      and not self.longitudinal.sng_armed
-      and not self.longitudinal.stop_hold
-      and self.longitudinal.sng_release_count == 0
-      and (self.longitudinal.r2_moving or frame < self.longitudinal.r2_release_until_frame)
-    )
-
-    if physical_braking:
-      # Brake-specific 0x275 / 0x08C feedback blocks renewed propulsion.
-      self.longitudinal.handoff_pending = True
-      self.longitudinal.handoff_ready_counter = 0
-      self.longitudinal.kinematic_ready_counter = 0
-
-    if hydraulic or release_pump:
-      command.is_accel = False
-      command.is_decel = True
-      if not moving_brake_phase:
-        # Preserve prior SNG and legacy hydraulic CAN behavior.
-        command.speed = float(CS.out.vEgo)
-        self.longitudinal.speed_offset = 0.0
-    elif not fresh or physical_braking or self.longitudinal.handoff_pending:
-      # After 0x271 releases, neutralize both 0x273 mode bits until the
-      # inherited HEV handoff and brake-feedback gates allow propulsion.
-      command.is_accel = False
-      command.is_decel = False
-      command.speed = float(CS.out.vEgo)
-      self.longitudinal.speed_offset = 0.0
-
-    return command
+    # Never silently use this controller with OP longitudinal enabled:
+    # its sole-owner camera forwarding needs a different Panda safety model.
+    if CP.openpilotLongitudinalControl or str(CP.safetyConfigs[0].safetyModel) not in ("dngaStock", "32"):
+      raise RuntimeError("V7 stocklong requires factory longitudinal and dngaStock Panda safety")
 
   def update(
-    self,
-    enabled,
-    active,
-    CS,
-    frame,
-    actuators,
-    pcm_cancel_cmd,
-    hud_alert,
-    left_line,
-    right_line,
-    lead,
-    left_lane_depart,
-    right_lane_depart,
-    dragonconf,
+    self, enabled, active, CS, frame, actuators, pcm_cancel_cmd,
+    hud_alert, left_line, right_line, lead, left_lane_depart,
+    right_lane_depart, dragonconf,
   ):
     can_sends = []
-    steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)
-    steer_max_interp = max(1.0, steer_max_interp)
+
+    steer_max_interp = max(1.0, interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ))
     new_steer = int(round(actuators.steer * steer_max_interp))
     blinker_on = CS.out.leftBlinker != CS.out.rightBlinker
     apply_steer = apply_dnga_steer_torque_limits(
@@ -131,50 +68,38 @@ class CarController:
     )
     self.steer_rate_limited = new_steer != apply_steer and apply_steer != 0
     self.steer_rate_limited &= not CS.out.steeringPressed
-    if self.need_clear_engine:
-      can_sends.append(make_can_msg(2015, b"\x01\x04\x00\x00\x00\x00\x00\x00", 0))
+
     if frame % CarControllerParams.STEER_STEP == 0:
       steer_req = (enabled or self.stock_ldw) and CS.lkas_latch
       can_sends.append(
-        create_can_steer_command(self.packer, apply_steer, steer_req, frame // CarControllerParams.STEER_STEP % 16)
-      )
-    command = self.longitudinal.update(enabled, CS, frame, actuators.accel, pcm_cancel_cmd, lead)
-    if command is not None:
-      command = self._apply_brake_propulsion_interlock(command, CS, frame)
-      can_sends.append(
-        dnga_create_accel_command(
-          self.packer,
-          CS.cruise_speed,
-          CS.out.cruiseState.available,
-          command.enabled,
-          command.lead,
-          command.speed,
-          command.is_accel,
-          command.is_decel,
-          CS.op_distance_val,
+        create_can_steer_command(
+          self.packer, apply_steer, steer_req,
+          frame // CarControllerParams.STEER_STEP % 16
         )
       )
-      can_sends.append(
-        dnga_create_brake_command(
-          self.packer, command.brake_state, command.pump, command.magnitude, frame // CarControllerParams.ACC_STEP % 8
-        )
+
+    # Observe the OEM camera request; never feed the proposal to the ECU.
+    if frame % CarControllerParams.ACC_STEP == 0:
+      observation = self.stock_brake_shadow.observe(
+        frame,
+        getattr(CS, "stock_acc_brake_rx_frame", -1000000),
+        getattr(CS, "stock_acc_brake_state", -1),
+        getattr(CS, "stock_brake_mag", 200),
       )
-      can_sends.append(
-        dnga_create_hud(
-          self.packer,
-          CS.out.cruiseState.available and CS.lkas_latch,
-          enabled,
-          left_line,
-          right_line,
-          self.stock_ldw,
-          CS.stock_fcw,
-          CS.stock_aeb,
-          CS.stock_adas_frontDepartureHUD,
-          CS.stock_lkc_off,
-          CS.stock_fcw_off,
+      if cloudlog is not None and frame % 100 == 0 and observation.valid:
+        cloudlog.info(
+          "V7_STOCKLONG_SHADOW raw_state=0x%02X raw_mag=%d hypothetical_mag=%d "
+          "reason=%s (NOT TRANSMITTED)",
+          observation.stock_state, observation.raw_magnitude,
+          observation.proposed_magnitude, observation.reason,
         )
-      )
+
+    # This is intentionally the complete transmit list. Stock ACC 0x271/0x273
+    # and stock HUD 0x274 remain entirely OEM-owned by the dedicated Panda
+    # forwarding hook. No OP curve brake, no synthetic lead, no ACC speed
+    # target, no pump override, no active brake magnitude scaling.
     self.last_steer = apply_steer
     new_actuators = actuators.copy()
     new_actuators.steer = apply_steer / steer_max_interp
-    return (new_actuators, can_sends)
+    new_actuators.accel = 0.0
+    return new_actuators, can_sends
