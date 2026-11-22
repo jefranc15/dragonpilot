@@ -1,0 +1,35 @@
+name: DNGA V7.1 OEM-follow shadow regressions (offline)
+
+on:
+  push:
+    branches: [V7.1-OEM-follow]
+  pull_request:
+    branches: [V7.1-OEM-follow]
+  workflow_dispatch:
+
+jobs:
+  oem-follow-read-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Compile DNGA V7.1 Python modules
+        run: |
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          python -m py_compile selfdrive/car/dnga/interface.py
+          python -m py_compile selfdrive/car/dnga/carstate.py
+          python -m py_compile selfdrive/car/dnga/stock_long_shadow.py
+          python -m py_compile selfdrive/car/dnga/oem_follow_shadow.py
+          python -m py_compile selfdrive/car/dnga/tests/test_v71_oem_follow_shadow.py
+      - name: V7.1 OEM-follow shadow arbitration
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_oem_follow_shadow.py -v
+      - name: Preserve V7.0 single-owner and brake shadow guarantees
+        run: |
+          python selfdrive/car/dnga/tests/test_v70_stocklong_shadow.py -v
+      - name: Previous V6 offline evidence detectors
+        run: |
+          python selfdrive/car/dnga/tests/test_v60_offline_turn_lead_review.py -v
+          python selfdrive/car/dnga/tests/test_v60_highway_handoff_audit.py -v
