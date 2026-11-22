@@ -142,7 +142,7 @@ class CurveArbitrationTests(unittest.TestCase):
 
   def test_plan_age_expired(self):
     d = assess(OEMFollowShadow(), plan=turn(frame=0))
-    self.assertEqual(d.mode, "NO_FRESH_PLAN")
+    self.assertEqual(d.mode, "STALE_TURN_PLAN")
 
 
 class BrakeReleaseTests(unittest.TestCase):
