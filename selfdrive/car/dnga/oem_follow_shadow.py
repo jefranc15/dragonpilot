@@ -171,7 +171,7 @@ class OEMFollowShadow:
     elif camera.lead:
       mode, reason = "OEM_LEAD", "factory_lead_has_priority_over_vision_turn"
       self.turn_confirm_count = 0
-    elif camera_braking or camera.is_decel:
+    elif camera_braking or (camera.is_decel and (not meaningful_curve or camera.is_accel)):
       mode, reason = "OEM_DECEL", "factory_braking_or_decel_has_priority"
       self.turn_confirm_count = 0
     elif frame <= self.release_until_frame:
