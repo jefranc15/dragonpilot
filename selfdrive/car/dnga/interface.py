@@ -9,6 +9,7 @@ from selfdrive.car import (
 )
 from selfdrive.car.interfaces import CarInterfaceBase
 from selfdrive.car.dnga.values import CAR
+from selfdrive.car.dnga.stock_acc_decode import dnga_rx_checksum_valid, decode_stock_acc_cmd_273
 from selfdrive.car.dnga.dnga_hybrid_feedback import (
   apply_hybrid_feedback_frame,
   initialize_hybrid_feedback_state,
@@ -19,15 +20,6 @@ def decode_engine_rpm_037(raw):
   """Decode the signed 16-bit 0x037 RPM field and clamp engine-off sentinels."""
   rpm_signed = raw if raw < 0x8000 else raw - 0x10000
   return max(0, rpm_signed)
-
-
-def dnga_rx_checksum_valid(addr, dat):
-  """Validate the additive DNGA checksum without trusting the DBC parser."""
-  dat = bytes(dat)
-  if len(dat) != 8:
-    return False
-  expected = (addr + len(dat[:-1]) + 1 + 2 + sum(dat[:-1])) & 0xFF
-  return dat[-1] == expected
 
 
 def decode_stock_acc_brake_271(dat):
@@ -66,24 +58,6 @@ def decode_stock_acc_brake_271(dat):
   return state, pump, magnitude, decel
 
 
-def decode_stock_acc_cmd_273(dat):
-  """Return validated camera engagement/lead/mode bits and desired speed."""
-  dat = bytes(dat)
-  if not dnga_rx_checksum_valid(0x273, dat):
-    return None
-  # Captured stock frames keep SET_ME_1_2 and SET_ME_1 asserted in both ready
-  # and engaged states. Reject unrelated/corrupt payloads before exposing bits.
-  if not (dat[1] & 0x02) or not (dat[6] & 0x40):
-    return None
-
-  enabled = bool(dat[1] & 0x20)
-  lead = bool(dat[1] & 0x08)
-  is_decel = bool(dat[4] & 0x20)
-  is_accel = bool(dat[4] & 0x40)
-  acc_cmd_kph = ((dat[2] << 8) | dat[3]) * 0.01
-  return enabled, lead, is_accel, is_decel, acc_cmd_kph
-
-
 class CarInterface(CarInterfaceBase):
   @staticmethod
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=[]):
@@ -107,7 +81,7 @@ class CarInterface(CarInterfaceBase):
     ret.enableGasInterceptor = False  # no physical gas interceptor
 
     # V7: Toyota camera is the sole longitudinal owner. OP retains lateral.
-    # Dedicated safety model 32 blocks OP 0x271/0x273/0x274 transmission.
+    # Dedicated Panda model 28 blocks OP 0x271/0x273/0x274 transmission.
     ret.openpilotLongitudinalControl = False
 
     # CarState owns the software ACC MAIN/SET/RES latch and publishes the exact
@@ -197,7 +171,16 @@ class CarInterface(CarInterfaceBase):
 
             elif msg.src == 2 and msg.address == 0x273:
               decoded = decode_stock_acc_cmd_273(msg.dat)
-              if decoded is not None:
+              if decoded is None:
+                # Malformed or unrecognized camera intent must not prolong
+                # a previously active cruise indication for another 150 ms.
+                self.CS.stock_acc_request_enabled = False
+                self.CS.stock_acc_request_lead = False
+                self.CS.stock_acc_request_is_accel = False
+                self.CS.stock_acc_request_is_decel = False
+                self.CS.stock_acc_cmd = 0.0
+                self.CS.stock_acc_request_rx_frame = -1000000
+              else:
                 enabled, lead, is_accel, is_decel, acc_cmd_kph = decoded
                 self.CS.stock_acc_request_enabled = enabled
                 self.CS.stock_acc_request_lead = lead
