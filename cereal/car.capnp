@@ -558,6 +558,7 @@ struct CarParams {
 	volvoC1 @26;
     volvoEUCD @27;
     dngaStock @28;  # DNGA factory ACC owner, OP steering only; requires matching Panda firmware
+    dngaV72 @29;  # BENCH ONLY: all OP host TX denied, factory camera fully forwarded
   }
 
   enum SteerControlType {
