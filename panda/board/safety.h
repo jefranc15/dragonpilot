@@ -5,6 +5,7 @@
 #include "safety/safety_honda.h"
 #include "safety/safety_toyota.h"
 #include "safety/safety_dnga_stock.h"
+#include "safety/safety_dnga_v72.h"
 #include "safety/safety_tesla.h"
 #include "safety/safety_gm.h"
 #include "safety/safety_ford.h"
@@ -45,6 +46,7 @@
 #define SAFETY_VOLVO_C1 26U
 #define SAFETY_VOLVO_EUCD 27U
 #define SAFETY_DNGA_STOCK 28U
+#define SAFETY_DNGA_V72 29U
 uint16_t current_safety_mode = SAFETY_SILENT;
 int16_t current_safety_param = 0;
 const safety_hooks *current_hooks = &nooutput_hooks;
@@ -245,6 +247,7 @@ const safety_hook_config safety_hook_registry[] = {
   {SAFETY_HONDA_NIDEC, &honda_nidec_hooks},
   {SAFETY_TOYOTA, &dnga_hooks},
   {SAFETY_DNGA_STOCK, &dnga_stock_hooks},
+  {SAFETY_DNGA_V72, &dnga_v72_hooks},
   {SAFETY_ELM327, &elm327_hooks},
   {SAFETY_GM, &gm_hooks},
   {SAFETY_HONDA_BOSCH, &honda_bosch_hooks},
