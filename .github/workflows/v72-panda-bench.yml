@@ -1,0 +1,36 @@
+name: DNGA V7.2 Panda bench-only native gate tests
+on:
+  push:
+    branches: [V7.2]
+  pull_request:
+    branches: [V7.2]
+  workflow_dispatch:
+jobs:
+  panda-v72-offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Build native C test against actual V7.2 safety header
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O2 -I. \
+            selfdrive/car/dnga/tests/native_v72_safety_test.c \
+            -o /tmp/dnga_v72_safety_test
+      - name: Run locked transmit, forwarding and steering-policy regression
+        run: /tmp/dnga_v72_safety_test
+      - name: Verify no active-controller or safety ID override
+        run: python selfdrive/car/dnga/tests/test_v72_source_isolation.py -v
+      - name: Preserve V7.1-R1 and earlier regressions
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_r1.py -v
+          python selfdrive/car/dnga/tests/test_v71_oem_follow_shadow.py -v
+          python selfdrive/car/dnga/tests/test_v70_stocklong_shadow.py -v
+          python selfdrive/car/dnga/tests/test_v60_offline_turn_lead_review.py -v
+          python selfdrive/car/dnga/tests/test_v60_highway_handoff_audit.py -v
+      - name: Release gate
+        run: |
+          echo "V7.2 is a BENCH-ONLY source prototype"
+          echo "All OP TX denied, including OP steering. Factory steering and ACC forwarded."
+          echo "Panda firmware NOT certified, and physical vehicle testing NOT performed."
