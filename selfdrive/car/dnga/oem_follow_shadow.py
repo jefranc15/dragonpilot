@@ -92,6 +92,7 @@ class OEMFollowShadow:
   def __init__(self):
     self.last_frame = -1
     self.previous_camera_braking = False
+    self.historical_previous_op_braking = False
     self.release_until_frame = -1
     self.turn_confirm_count = 0
     self.last_observation = None
@@ -99,10 +100,13 @@ class OEMFollowShadow:
   def observe(self, frame, camera, turn, *,
               ego_speed_mps, ego_accel_mps2,
               gas_pressed=False, brake_pressed=False,
-              brake_shadow=None):
+              brake_shadow=None, historical_op_brake_state=None):
     """Evaluate one synchronized snapshot, never return a CAN command.
 
     brake_shadow is V7's read-only StockBrakeObservation for the same frame.
+    historical_op_brake_state is an OPTIONAL decoded 0x271 from an older
+    V6 OP-TX rlog; it must never come from the V7/V7.1 live controller.
+    Both factory-camera and historical OP release events are observed.
     No camera data is used as physical ECU acknowledgment.
     """
     if frame <= self.last_frame:
@@ -127,6 +131,16 @@ class OEMFollowShadow:
     if self.previous_camera_braking and not camera_braking and valid_camera:
       self.release_until_frame = frame + RELEASE_MONITOR_FRAMES
     self.previous_camera_braking = camera_braking if valid_camera else False
+
+    # November 17 V6 event: OP's bus-0 command entered READY while the
+    # Toyota camera stayed READY throughout. The camera-only release
+    # detector never sees this. Separate offline V6-TX replay observation
+    # therefore tracks the actual OP BRAKING->READY edge independently.
+    if historical_op_brake_state is not None:
+      op_state = int(historical_op_brake_state)
+      if self.historical_previous_op_braking and op_state in IDLE_STATES:
+        self.release_until_frame = frame + RELEASE_MONITOR_FRAMES
+      self.historical_previous_op_braking = op_state in BRAKING_STATES
 
     camera_strength = ((200 - camera.brake_magnitude) / 100.0
                        if camera_braking and valid_camera else 0.0)
