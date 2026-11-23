@@ -134,7 +134,7 @@ int main(void) {
 
   gas_pressed = true;
   brake_pressed = true;
-  expect_known_gap("steer TX allowed under gas+brake override", dnga_stock_hooks.tx(&steer) == 1);
+  expect_known_gap("steer TX allowed under gas+brake override", gas_pressed && brake_pressed && dnga_stock_hooks.tx(&steer) == 1);
   CANPacket_t bad_rx = msg(0xFFFFFFFFU, 0, 0);
   expect_known_gap("unknown RX packet accepted", dnga_stock_hooks.rx(&bad_rx) == 1);
   expect_known_gap("RX never clears controls_allowed on override", controls_allowed == true);
