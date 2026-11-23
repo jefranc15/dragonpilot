@@ -28,7 +28,7 @@ def frame273(*, enabled, constant_b1=True, constant_b6=True,
   dat[3] = speed_raw & 0xff
   dat[4] = (0x40 if is_accel else 0) | (0x20 if is_decel else 0)
   dat[6] = 0x40 if constant_b6 else 0
-  dat[7] = (0x273 + 8 + sum(dat[:-1])) & 0xff
+  dat[7] = (0x273 + 10 + sum(dat[:-1])) & 0xff
   return bytes(dat)
 
 
