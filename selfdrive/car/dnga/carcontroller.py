@@ -52,6 +52,8 @@ class CarController:
     self.oem_follow_shadow = OEMFollowShadow()
     self.last_shadow_mode = ""
     self.turn_plan = TurnSnapshot()
+    self.turn_plan_receive_count = 0
+    self.turn_plan_error_count = 0
     try:
       # Read-only longitudinalPlan subscription; missing input means OEM-only.
       self.turn_plan_sm = messaging.SubMaster(["longitudinalPlan"])
@@ -79,8 +81,12 @@ class CarController:
             near_accel=float(accels[0]) if accels else 0.0,
             lookahead_accel=min(float(v) for v in accels[:13]) if accels else 0.0,
           )
+          self.turn_plan_receive_count += 1
       except Exception:
-        # Stale plan is detected by OEMFollowShadow; never synthesize curves.
+        # Never treat an invalid turn-plan message as fresh or authoritative.
+        # Diagnostic health counters distinguish missing input from "no turn".
+        self.turn_plan_error_count += 1
+        self.turn_plan = TurnSnapshot()
         self.turn_plan_sm = None
     return self.turn_plan
 
@@ -139,17 +145,21 @@ class CarController:
         brake_shadow=observation,
       )
       # OEM commands and shadow recommendations must not change can_sends.
+      plan_age = frame - self.turn_plan.rx_frame if self.turn_plan.rx_frame >= 0 else -1
       if cloudlog is not None and (frame % 100 == 0 or assessment.mode != self.last_shadow_mode):
         cloudlog.info(
           "V71_OEM_FOLLOW_SHADOW mode=%s reason=%s lead=%d OEM_accel=%d OEM_decel=%d "
           "OEM_target=%.1f hypothetical_turn_target=%.1f OEM_brake=%.3f "
           "hypothetical_brake=%.3f OEM_pump=%.2f hypothetical_pump=%.2f "
-          "weakening=%.2f (NOT TRANSMITTED)",
+          "weakening=%.2f plan_source=%s plan_age=%d plan_count=%d plan_errors=%d "
+          "(NOT TRANSMITTED)",
           assessment.mode, assessment.reason,
           assessment.camera_lead, assessment.camera_acceleration, assessment.camera_deceleration,
           assessment.factory_acc_kph, assessment.hypothetical_curve_target_kph,
           assessment.camera_brake_strength, assessment.hypothetical_brake_strength,
           assessment.camera_pump, assessment.hypothetical_pump, assessment.weakening_fraction,
+          self.turn_plan.source, plan_age,
+          self.turn_plan_receive_count, self.turn_plan_error_count,
         )
       self.last_shadow_mode = assessment.mode
 
