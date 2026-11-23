@@ -1,0 +1,36 @@
+name: DNGA V7.1-R1 camera decoder and OEM-follow replay (offline)
+
+on:
+  push:
+    branches: [V7.1-R1]
+  pull_request:
+    branches: [V7.1-R1]
+  workflow_dispatch:
+
+jobs:
+  r1-offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Compile changed and dependent modules
+        run: |
+          python -m py_compile selfdrive/car/dnga/stock_acc_decode.py
+          python -m py_compile selfdrive/car/dnga/interface.py
+          python -m py_compile selfdrive/car/dnga/carstate.py
+          python -m py_compile selfdrive/car/dnga/carcontroller.py
+          python -m py_compile selfdrive/car/dnga/oem_follow_shadow.py
+          python -m py_compile selfdrive/car/dnga/tests/test_v71_r1.py
+      - name: R1 decoding and V6 release-pattern regression
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_r1.py -v
+      - name: Preserve V7.1 and V7.0 controller ownership contracts
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_oem_follow_shadow.py -v
+          python selfdrive/car/dnga/tests/test_v70_stocklong_shadow.py -v
+      - name: Older standalone diagnostic tests
+        run: |
+          python selfdrive/car/dnga/tests/test_v60_offline_turn_lead_review.py -v
+          python selfdrive/car/dnga/tests/test_v60_highway_handoff_audit.py -v
