@@ -1,0 +1,37 @@
+name: DNGA V7.1-R1 Panda native safety audit — NOT road certification
+
+on:
+  push:
+    branches: [V7.1-R1-panda-audit]
+  pull_request:
+    branches: [V7.1-R1-panda-audit]
+  workflow_dispatch:
+
+jobs:
+  audit-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Compile native test against unchanged Panda safety_dnga_stock.h
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O2 -I. \
+            selfdrive/car/dnga/tests/native_v71_panda_audit.c -o /tmp/native_v71_panda_audit
+      - name: Run TX/FWD policy cases and expose known unsafe acceptance
+        run: |
+          /tmp/native_v71_panda_audit
+      - name: Verify firmware/safety ID binding and read-only ownership
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_panda_source_audit.py -v
+      - name: Preserve R1 and V7.1 source/regression tests
+        run: |
+          python selfdrive/car/dnga/tests/test_v71_r1.py -v
+          python selfdrive/car/dnga/tests/test_v71_oem_follow_shadow.py -v
+          python selfdrive/car/dnga/tests/test_v70_stocklong_shadow.py -v
+      - name: Explicit release-blocking audit statement
+        run: |
+          echo 'PANDA_AUDIT_RESULT=NOT_ROAD_QUALIFIED'
+          echo 'Reason: no independent steering torque/rate/counter/checksum/driver override enforcement.'
+          echo 'No Panda firmware built or flashed. No vehicle validation performed.'
